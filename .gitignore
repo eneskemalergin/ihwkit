@@ -15,3 +15,8 @@ venv/
 .pytest_cache/
 .coverage
 htmlcov/
+
+# Dev folders
+tmp/
+ref/
+plan/
