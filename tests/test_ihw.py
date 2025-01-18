@@ -5,7 +5,7 @@ import numpy as np
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-from ihw import adjust_ihw
+from ihw import _p_adjust, adjust_ihw
 
 _P = np.array([0.1, 0.2, 0.3, 0.4])
 _X = np.array([1.0, 2.0, 3.0, 4.0])
@@ -59,3 +59,29 @@ def test_unknown_adjustment_type_raises() -> None:
 def test_unknown_covariate_type_raises() -> None:
     with pytest.raises(ValueError, match="covariate_type"):
         adjust_ihw(_P, _X, 0.1, covariate_type="cyclic")
+
+
+def test_single_bin_matches_bh() -> None:
+    rng = np.random.default_rng(0)
+    p = rng.uniform(size=80)
+    x = rng.uniform(size=80)
+    result = adjust_ihw(p, x, 0.1, nbins=1, seed=1)
+    np.testing.assert_allclose(result.adj_pvalues, _p_adjust(p, "fdr_bh"))
+    np.testing.assert_allclose(result.weights, 1.0)
+    assert result.nfolds == 1
+
+
+def test_exploratory_uses_one_fold() -> None:
+    rng = np.random.default_rng(0)
+    p = rng.uniform(size=80)
+    x = rng.uniform(size=80)
+    result = adjust_ihw(p, x, 0.1, nbins=4, exploratory=True, seed=1)
+    assert result.nfolds == 1
+
+
+def test_default_uses_five_folds() -> None:
+    rng = np.random.default_rng(0)
+    p = rng.uniform(size=80)
+    x = rng.uniform(size=80)
+    result = adjust_ihw(p, x, 0.1, nbins=4, seed=1)
+    assert result.nfolds == 5
