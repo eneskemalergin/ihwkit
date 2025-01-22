@@ -495,6 +495,8 @@ def adjust_ihw(
         f = np.asarray(folds, dtype=np.intp)
         if f.shape[0] != n:
             raise ValueError(f"folds length {f.shape[0]} != {n}")
+        if np.any((f < 0) | (f >= eff_nfolds)):
+            raise ValueError(f"folds labels must be in 0 .. {eff_nfolds - 1}")
         sorted_folds = f[order]
     result = _ihw_internal(
         groups[order],

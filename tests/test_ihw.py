@@ -85,3 +85,23 @@ def test_default_uses_five_folds() -> None:
     x = rng.uniform(size=80)
     result = adjust_ihw(p, x, 0.1, nbins=4, seed=1)
     assert result.nfolds == 5
+
+
+def test_out_of_range_fold_labels_raise() -> None:
+    rng = np.random.default_rng(0)
+    p = rng.uniform(size=40)
+    x = rng.uniform(size=40)
+    folds = rng.integers(0, 5, size=40)
+    folds[0] = 5
+    with pytest.raises(ValueError, match="folds labels"):
+        adjust_ihw(p, x, 0.1, nbins=4, nfolds=5, folds=folds, seed=1)
+
+
+def test_negative_fold_labels_raise() -> None:
+    rng = np.random.default_rng(0)
+    p = rng.uniform(size=40)
+    x = rng.uniform(size=40)
+    folds = rng.integers(0, 5, size=40)
+    folds[3] = -1
+    with pytest.raises(ValueError, match="folds labels"):
+        adjust_ihw(p, x, 0.1, nbins=4, nfolds=5, folds=folds, seed=1)
