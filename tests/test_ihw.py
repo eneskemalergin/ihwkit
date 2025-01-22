@@ -105,3 +105,27 @@ def test_negative_fold_labels_raise() -> None:
     folds[3] = -1
     with pytest.raises(ValueError, match="folds labels"):
         adjust_ihw(p, x, 0.1, nbins=4, nfolds=5, folds=folds, seed=1)
+
+
+def test_nfolds_not_positive_raises() -> None:
+    with pytest.raises(ValueError, match="nfolds"):
+        adjust_ihw(_P, _X, 0.1, nfolds=0)
+    with pytest.raises(ValueError, match="nfolds"):
+        adjust_ihw(_P, _X, 0.1, nfolds=-3)
+
+
+def test_nbins_not_positive_raises() -> None:
+    with pytest.raises(ValueError, match="nbins"):
+        adjust_ihw(_P, _X, 0.1, nbins=0)
+    with pytest.raises(ValueError, match="nbins"):
+        adjust_ihw(_P, _X, 0.1, nbins=-2)
+
+
+def test_pvalue_not_1d_raises() -> None:
+    with pytest.raises(ValueError, match="1-d"):
+        adjust_ihw(np.ones((4, 1)), _X, 0.1)
+
+
+def test_covariate_not_1d_raises() -> None:
+    with pytest.raises(ValueError, match="1-d"):
+        adjust_ihw(_P, np.ones((4, 1)), 0.1)

@@ -425,6 +425,10 @@ def adjust_ihw(
 ) -> IHWResult:
     p = np.asarray(pvalues, dtype=np.float64)
     x = np.asarray(covariates, dtype=np.float64)
+    if p.ndim != 1:
+        raise ValueError("pvalues must be a 1-d array")
+    if x.ndim != 1:
+        raise ValueError("covariates must be a 1-d array")
     if p.shape[0] == 0:
         raise ValueError("pvalues must not be empty")
     if np.any(~np.isfinite(p)):
@@ -441,6 +445,8 @@ def adjust_ihw(
         raise ValueError(f"Unknown adjustment_type: {adjustment_type!r}")
     if covariate_type not in ("ordinal", "nominal"):
         raise ValueError(f"Unknown covariate_type: {covariate_type!r}")
+    if nfolds <= 0:
+        raise ValueError(f"nfolds must be positive, got {nfolds}")
     n = p.shape[0]
     if rng is None:
         rng = np.random.default_rng(seed)
@@ -451,6 +457,8 @@ def adjust_ihw(
         nbins_i = max(1, min(40, n // 1500))
     else:
         nbins_i = int(nbins)
+        if nbins_i <= 0:
+            raise ValueError(f"nbins must be positive, got {nbins}")
     bin_rng = np.random.default_rng(seed)
     groups = _groups_by_filter(x, nbins_i, bin_rng)
     m_groups = np.bincount(groups, minlength=nbins_i).astype(np.intp)
