@@ -3,6 +3,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+from scipy.stats import norm
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from ihw import _p_adjust, adjust_ihw
@@ -142,3 +143,20 @@ def test_uniform_null_fdr_is_conservative() -> None:
         result = adjust_ihw(p, x, alpha, nbins=4, seed=1)
         rates.append(float(np.mean(result.adj_pvalues <= alpha)))
     assert max(rates) < alpha
+
+
+def test_ihw_beats_bh_when_covariate_is_informative() -> None:
+    rng = np.random.default_rng(7)
+    n = 2000
+    alpha = 0.1
+    cov = rng.uniform(0.0, 3.0, size=n)
+    signals = rng.binomial(1, 0.12, size=n).astype(bool)
+    z = rng.normal(loc=signals * cov)
+    p = 1.0 - norm.cdf(z)
+    result = adjust_ihw(p, cov, alpha, nbins=4, seed=1)
+    bh_adj = _p_adjust(p, "fdr_bh")
+    ihw_rej = int(np.sum(result.adj_pvalues <= alpha))
+    bh_rej = int(np.sum(bh_adj <= alpha))
+    assert ihw_rej >= bh_rej
+    assert np.all(np.isfinite(result.weights))
+    assert np.all(result.weights >= 0.0)
