@@ -129,3 +129,16 @@ def test_pvalue_not_1d_raises() -> None:
 def test_covariate_not_1d_raises() -> None:
     with pytest.raises(ValueError, match="1-d"):
         adjust_ihw(_P, np.ones((4, 1)), 0.1)
+
+
+def test_uniform_null_fdr_is_conservative() -> None:
+    alpha = 0.1
+    n = 2000
+    rates = []
+    for seed in range(10):
+        rng = np.random.default_rng(seed)
+        p = rng.uniform(size=n)
+        x = rng.uniform(size=n)
+        result = adjust_ihw(p, x, alpha, nbins=4, seed=1)
+        rates.append(float(np.mean(result.adj_pvalues <= alpha)))
+    assert max(rates) < alpha
