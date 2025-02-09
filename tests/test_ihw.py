@@ -160,3 +160,32 @@ def test_ihw_beats_bh_when_covariate_is_informative() -> None:
     assert ihw_rej >= bh_rej
     assert np.all(np.isfinite(result.weights))
     assert np.all(result.weights >= 0.0)
+
+
+def test_tied_covariates_return_finite_result() -> None:
+    rng = np.random.default_rng(0)
+    p = rng.uniform(size=80)
+    x = np.full(80, 2.5)
+    result = adjust_ihw(p, x, 0.1, nbins=4, seed=1)
+    assert np.all(np.isfinite(result.weights))
+    assert np.all(np.isfinite(result.adj_pvalues))
+
+
+def test_pvalue_zero_and_one_are_legal() -> None:
+    rng = np.random.default_rng(1)
+    p = rng.uniform(size=80)
+    p[0] = 0.0
+    p[-1] = 1.0
+    x = rng.uniform(size=80)
+    result = adjust_ihw(p, x, 0.1, nbins=4, seed=1)
+    assert np.all(np.isfinite(result.weights))
+    assert np.all(np.isfinite(result.adj_pvalues))
+
+
+def test_default_path_has_no_nan_weights_or_adj_p() -> None:
+    rng = np.random.default_rng(2)
+    p = rng.uniform(size=80)
+    x = rng.uniform(size=80)
+    result = adjust_ihw(p, x, 0.1, nbins=4, seed=1)
+    assert not np.any(np.isnan(result.weights))
+    assert not np.any(np.isnan(result.adj_pvalues))
