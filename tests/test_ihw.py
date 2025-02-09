@@ -189,3 +189,23 @@ def test_default_path_has_no_nan_weights_or_adj_p() -> None:
     result = adjust_ihw(p, x, 0.1, nbins=4, seed=1)
     assert not np.any(np.isnan(result.weights))
     assert not np.any(np.isnan(result.adj_pvalues))
+
+
+def test_tiny_pvalues_are_allowed() -> None:
+    rng = np.random.default_rng(0)
+    p = rng.uniform(size=80)
+    p[0] = 1e-30
+    p[1] = 1e-21
+    x = rng.uniform(size=80)
+    result = adjust_ihw(p, x, 0.1, nbins=4, seed=1)
+    assert np.all(np.isfinite(result.weights))
+    assert np.all(np.isfinite(result.adj_pvalues))
+
+
+def test_lambda_zero_gives_unit_weights() -> None:
+    rng = np.random.default_rng(0)
+    p = rng.uniform(size=80)
+    x = rng.uniform(size=80)
+    result = adjust_ihw(p, x, 0.1, nbins=4, lambdas=[0.0], seed=1)
+    np.testing.assert_allclose(result.weights, 1.0)
+    np.testing.assert_allclose(result.adj_pvalues, _p_adjust(p, "fdr_bh"))
