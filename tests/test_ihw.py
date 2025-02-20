@@ -209,3 +209,31 @@ def test_lambda_zero_gives_unit_weights() -> None:
     result = adjust_ihw(p, x, 0.1, nbins=4, lambdas=[0.0], seed=1)
     np.testing.assert_allclose(result.weights, 1.0)
     np.testing.assert_allclose(result.adj_pvalues, _p_adjust(p, "fdr_bh"))
+
+
+def test_weight_lp_failure_raises(monkeypatch: pytest.MonkeyPatch) -> None:
+    import ihw as ihw_mod
+
+    class Failed:
+        success = False
+        x = None
+        message = "stub infeasibility"
+
+    monkeypatch.setattr(ihw_mod, "linprog", lambda *args, **kwargs: Failed())
+    rng = np.random.default_rng(0)
+    p = rng.uniform(size=40)
+    x = rng.uniform(size=40)
+    with pytest.raises(RuntimeError, match="weight LP did not solve"):
+        adjust_ihw(p, x, 0.1, nbins=4, seed=1)
+
+
+def test_successful_lp_does_not_fall_back_to_uniform() -> None:
+    rng = np.random.default_rng(7)
+    n = 80
+    cov = rng.uniform(0.0, 3.0, size=n)
+    signals = rng.binomial(1, 0.12, size=n).astype(bool)
+    z = rng.normal(loc=signals * cov)
+    p = 1.0 - norm.cdf(z)
+    result = adjust_ihw(p, cov, 0.1, nbins=4, seed=1)
+    assert np.all(np.isfinite(result.weights))
+    assert not np.allclose(result.weights, 1.0)

@@ -171,8 +171,12 @@ def _solve_lp(objective: np.ndarray, a_ub: np.ndarray, b_ub: np.ndarray, lb: np.
         bounds.append((float(lb[j]), hi))
     res = linprog(-objective, A_ub=a_ub, b_ub=b_ub, bounds=bounds, method="highs")
     if not res.success or res.x is None:
-        return np.full(n, np.nan)
-    return np.asarray(res.x, dtype=np.float64)
+        detail = getattr(res, "message", "no solution")
+        raise RuntimeError(f"weight LP did not solve: {detail}")
+    x = np.asarray(res.x, dtype=np.float64)
+    if not np.all(np.isfinite(x)):
+        raise RuntimeError("weight LP did not solve: non-finite solution")
+    return x
 
 
 def _ihw_convex(
@@ -274,8 +278,6 @@ def _ihw_convex(
     if n_aux:
         ub[n_base:] = np.inf
     sol = _solve_lp(objective, rows, rhs, lb, ub)
-    if not np.all(np.isfinite(sol)):
-        return np.ones(nbins, dtype=np.float64)
     thresholds = np.maximum(sol[nbins : 2 * nbins], 0.0)
     return _thresholds_to_weights(thresholds, m_groups)
 
