@@ -237,3 +237,21 @@ def test_successful_lp_does_not_fall_back_to_uniform() -> None:
     result = adjust_ihw(p, cov, 0.1, nbins=4, seed=1)
     assert np.all(np.isfinite(result.weights))
     assert not np.allclose(result.weights, 1.0)
+
+
+def test_nominal_covariates_run() -> None:
+    rng = np.random.default_rng(0)
+    p = rng.uniform(size=80)
+    x = rng.integers(0, 5, size=80).astype(float)
+    result = adjust_ihw(p, x, 0.1, nbins=4, covariate_type="nominal", seed=1)
+    assert np.all(np.isfinite(result.weights))
+    assert result.penalty == "uniform_deviation"
+
+
+def test_bonferroni_adj_p_at_least_bh() -> None:
+    rng = np.random.default_rng(0)
+    p = rng.uniform(size=80)
+    x = rng.uniform(size=80)
+    bh = adjust_ihw(p, x, 0.1, nbins=4, seed=1)
+    bonf = adjust_ihw(p, x, 0.1, nbins=4, adjustment_type="bonferroni", seed=1)
+    assert np.all(bonf.adj_pvalues >= bh.adj_pvalues - 1e-12)
