@@ -255,3 +255,16 @@ def test_bonferroni_adj_p_at_least_bh() -> None:
     bh = adjust_ihw(p, x, 0.1, nbins=4, seed=1)
     bonf = adjust_ihw(p, x, 0.1, nbins=4, adjustment_type="bonferroni", seed=1)
     assert np.all(bonf.adj_pvalues >= bh.adj_pvalues - 1e-12)
+
+
+def test_auto_lambda_is_finite_and_may_differ_from_inf() -> None:
+    rng = np.random.default_rng(0)
+    p = rng.uniform(size=500)
+    x = rng.uniform(size=500)
+    inf = adjust_ihw(p, x, 0.1, nbins=4, seed=1)
+    auto = adjust_ihw(p, x, 0.1, nbins=4, lambdas="auto", seed=1)
+    assert np.all(np.isfinite(auto.weights))
+    assert np.all(np.isfinite(auto.adj_pvalues))
+    weights_differ = not np.allclose(auto.weights, inf.weights)
+    adj_differ = not np.allclose(auto.adj_pvalues, inf.adj_pvalues)
+    assert weights_differ or adj_differ
