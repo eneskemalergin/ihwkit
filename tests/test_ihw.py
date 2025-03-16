@@ -6,7 +6,7 @@ import pytest
 from scipy.stats import norm
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-from ihw import _p_adjust, adjust_ihw
+from ihw import _p_adjust, _thresholds_to_weights, adjust_ihw
 
 _P = np.array([0.1, 0.2, 0.3, 0.4])
 _X = np.array([1.0, 2.0, 3.0, 4.0])
@@ -306,3 +306,8 @@ def test_nsplits_internal_not_positive_raises() -> None:
         adjust_ihw(_P, _X, 0.1, nsplits_internal=0)
     with pytest.raises(ValueError, match="nsplits_internal"):
         adjust_ihw(_P, _X, 0.1, nsplits_internal=-2)
+
+
+def test_zero_weight_denom_raises() -> None:
+    with pytest.raises(RuntimeError, match="weight denom"):
+        _thresholds_to_weights(np.array([0.1, 0.2, 0.0]), np.array([0, 0, 10]))

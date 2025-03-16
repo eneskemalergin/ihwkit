@@ -83,6 +83,8 @@ def _thresholds_to_weights(thresholds: np.ndarray, m_groups: np.ndarray) -> np.n
         return np.ones(thresholds.shape[0], dtype=np.float64)
     m = float(np.sum(m_groups))
     denom = float(np.sum(m_groups.astype(np.float64) * thresholds))
+    if denom == 0.0:
+        raise RuntimeError("weight denom is zero")
     return thresholds * m / denom
 
 
