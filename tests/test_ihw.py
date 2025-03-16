@@ -92,8 +92,8 @@ def test_out_of_range_fold_labels_raise() -> None:
     rng = np.random.default_rng(0)
     p = rng.uniform(size=40)
     x = rng.uniform(size=40)
-    folds = rng.integers(0, 5, size=40)
-    folds[0] = 5
+    folds = np.array([0, 1, 2] * 13 + [0])[:40]
+    folds[0] = 4
     with pytest.raises(ValueError, match="folds labels"):
         adjust_ihw(p, x, 0.1, nbins=4, nfolds=5, folds=folds, seed=1)
 
@@ -344,3 +344,13 @@ def test_weights_have_mean_one() -> None:
     nom_x = np.array([0.0] * 8 + [1.0] * 2 + [2.0] * 2 + [3.0] * 68)
     nominal = adjust_ihw(p, nom_x, 0.1, covariate_type="nominal", seed=1)
     np.testing.assert_allclose(np.mean(nominal.weights), 1.0)
+
+
+def test_nfolds_follows_supplied_fold_labels() -> None:
+    rng = np.random.default_rng(0)
+    p = rng.uniform(size=40)
+    x = rng.uniform(size=40)
+    folds = np.array([0, 1, 2] * 13 + [0])[:40]
+    result = adjust_ihw(p, x, 0.1, nbins=4, nfolds=5, folds=folds, seed=1)
+    assert result.nfolds == 3
+    assert set(result.folds.tolist()) == {0, 1, 2}
