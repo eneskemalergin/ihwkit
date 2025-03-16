@@ -480,6 +480,12 @@ def adjust_ihw(
     else:
         eff_nfolds = nfolds
         lam_grid = np.asarray(lambdas, dtype=np.float64)
+        if lam_grid.size == 0:
+            raise ValueError("lambdas must not be empty")
+        if np.any(np.isnan(lam_grid)):
+            raise ValueError("lambdas must be finite or +inf")
+        if np.any(lam_grid < 0.0):
+            raise ValueError("lambdas must be nonnegative")
     pad_method = "fdr_bh" if adjustment_type == "bh" else "bonferroni"
     if nbins_i == 1:
         order = np.argsort(p)
