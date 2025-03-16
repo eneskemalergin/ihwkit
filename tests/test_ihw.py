@@ -333,3 +333,14 @@ def test_single_nominal_level_is_bh() -> None:
     assert result.nfolds == 1
     np.testing.assert_allclose(result.weights, 1.0)
     np.testing.assert_allclose(result.adj_pvalues, _p_adjust(p, "fdr_bh"))
+
+
+def test_weights_have_mean_one() -> None:
+    rng = np.random.default_rng(0)
+    p = rng.uniform(size=80)
+    x = rng.uniform(size=80)
+    ordinal = adjust_ihw(p, x, 0.1, nbins=4, seed=1)
+    np.testing.assert_allclose(np.mean(ordinal.weights), 1.0)
+    nom_x = np.array([0.0] * 8 + [1.0] * 2 + [2.0] * 2 + [3.0] * 68)
+    nominal = adjust_ihw(p, nom_x, 0.1, covariate_type="nominal", seed=1)
+    np.testing.assert_allclose(np.mean(nominal.weights), 1.0)
