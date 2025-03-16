@@ -292,3 +292,17 @@ def test_nan_lambda_raises() -> None:
 def test_negative_lambda_raises() -> None:
     with pytest.raises(ValueError, match="lambdas"):
         adjust_ihw(_P, _X, 0.1, nbins=2, lambdas=[-1.0])
+
+
+def test_nfolds_internal_not_positive_raises() -> None:
+    with pytest.raises(ValueError, match="nfolds_internal"):
+        adjust_ihw(_P, _X, 0.1, nfolds_internal=0)
+    with pytest.raises(ValueError, match="nfolds_internal"):
+        adjust_ihw(_P, _X, 0.1, nfolds_internal=-1)
+
+
+def test_nsplits_internal_not_positive_raises() -> None:
+    with pytest.raises(ValueError, match="nsplits_internal"):
+        adjust_ihw(_P, _X, 0.1, nsplits_internal=0)
+    with pytest.raises(ValueError, match="nsplits_internal"):
+        adjust_ihw(_P, _X, 0.1, nsplits_internal=-2)

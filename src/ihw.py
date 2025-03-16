@@ -449,6 +449,10 @@ def adjust_ihw(
         raise ValueError(f"Unknown covariate_type: {covariate_type!r}")
     if nfolds <= 0:
         raise ValueError(f"nfolds must be positive, got {nfolds}")
+    if nfolds_internal <= 0:
+        raise ValueError(f"nfolds_internal must be positive, got {nfolds_internal}")
+    if nsplits_internal <= 0:
+        raise ValueError(f"nsplits_internal must be positive, got {nsplits_internal}")
     n = p.shape[0]
     if rng is None:
         rng = np.random.default_rng(seed)
