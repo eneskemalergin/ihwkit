@@ -311,3 +311,25 @@ def test_nsplits_internal_not_positive_raises() -> None:
 def test_zero_weight_denom_raises() -> None:
     with pytest.raises(RuntimeError, match="weight denom"):
         _thresholds_to_weights(np.array([0.1, 0.2, 0.0]), np.array([0, 0, 10]))
+
+
+def test_nominal_uses_unique_levels() -> None:
+    rng = np.random.default_rng(0)
+    p = rng.uniform(size=80)
+    x = np.array([0.0] * 8 + [1.0] * 2 + [2.0] * 2 + [3.0] * 68)
+    result = adjust_ihw(p, x, 0.1, nbins=4, covariate_type="nominal", seed=1)
+    counts = np.bincount(result.groups)
+    np.testing.assert_array_equal(np.sort(counts), [2, 2, 8, 68])
+    assert result.nbins == 4
+    assert result.penalty == "uniform_deviation"
+
+
+def test_single_nominal_level_is_bh() -> None:
+    rng = np.random.default_rng(0)
+    p = rng.uniform(size=80)
+    x = np.full(80, 3.0)
+    result = adjust_ihw(p, x, 0.1, nbins=4, covariate_type="nominal", seed=1)
+    assert result.nbins == 1
+    assert result.nfolds == 1
+    np.testing.assert_allclose(result.weights, 1.0)
+    np.testing.assert_allclose(result.adj_pvalues, _p_adjust(p, "fdr_bh"))

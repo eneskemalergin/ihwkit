@@ -467,7 +467,11 @@ def adjust_ihw(
         nbins_i = int(nbins)
         if nbins_i <= 0:
             raise ValueError(f"nbins must be positive, got {nbins}")
-    groups = _groups_by_filter(x, nbins_i, rng)
+    if covariate_type == "nominal":
+        groups = np.unique(x, return_inverse=True)[1].astype(np.intp)
+        nbins_i = int(np.unique(groups).size)
+    else:
+        groups = _groups_by_filter(x, nbins_i, rng)
     m_groups = np.bincount(groups, minlength=nbins_i).astype(np.intp)
     if exploratory:
         eff_nfolds = 1
