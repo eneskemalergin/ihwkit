@@ -461,8 +461,7 @@ def adjust_ihw(
         nbins_i = int(nbins)
         if nbins_i <= 0:
             raise ValueError(f"nbins must be positive, got {nbins}")
-    bin_rng = np.random.default_rng(seed)
-    groups = _groups_by_filter(x, nbins_i, bin_rng)
+    groups = _groups_by_filter(x, nbins_i, rng)
     m_groups = np.bincount(groups, minlength=nbins_i).astype(np.intp)
     if exploratory:
         eff_nfolds = 1

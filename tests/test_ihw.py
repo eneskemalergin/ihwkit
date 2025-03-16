@@ -268,3 +268,27 @@ def test_auto_lambda_is_finite_and_may_differ_from_inf() -> None:
     weights_differ = not np.allclose(auto.weights, inf.weights)
     adj_differ = not np.allclose(auto.adj_pvalues, inf.adj_pvalues)
     assert weights_differ or adj_differ
+
+
+def test_bin_ties_follow_the_passed_rng() -> None:
+    rng = np.random.default_rng(0)
+    p = rng.uniform(size=80)
+    x = np.round(rng.uniform(size=80), decimals=1)
+    a = adjust_ihw(p, x, 0.1, nbins=4, rng=np.random.default_rng(1), seed=1)
+    b = adjust_ihw(p, x, 0.1, nbins=4, rng=np.random.default_rng(2), seed=1)
+    assert not np.array_equal(a.groups, b.groups)
+
+
+def test_empty_lambdas_raise() -> None:
+    with pytest.raises(ValueError, match="lambdas"):
+        adjust_ihw(_P, _X, 0.1, nbins=2, lambdas=[])
+
+
+def test_nan_lambda_raises() -> None:
+    with pytest.raises(ValueError, match="lambdas"):
+        adjust_ihw(_P, _X, 0.1, nbins=2, lambdas=[np.nan])
+
+
+def test_negative_lambda_raises() -> None:
+    with pytest.raises(ValueError, match="lambdas"):
+        adjust_ihw(_P, _X, 0.1, nbins=2, lambdas=[-1.0])
