@@ -387,3 +387,12 @@ def test_auto_nbins_below_1500() -> None:
     p_mid = rng.uniform(size=3000)
     x_mid = rng.uniform(size=3000)
     assert adjust_ihw(p_mid, x_mid, 0.1, seed=1).nbins == 2
+
+
+def test_folds_must_be_1d() -> None:
+    rng = np.random.default_rng(0)
+    p = rng.uniform(size=40)
+    x = rng.uniform(size=40)
+    folds = rng.integers(0, 5, size=(40, 1))
+    with pytest.raises(ValueError, match="1-d"):
+        adjust_ihw(p, x, 0.1, nbins=4, folds=folds, seed=1)

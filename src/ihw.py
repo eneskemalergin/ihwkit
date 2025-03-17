@@ -523,6 +523,8 @@ def adjust_ihw(
     sorted_folds = None
     if folds is not None:
         f = np.asarray(folds, dtype=np.intp)
+        if f.ndim != 1:
+            raise ValueError("folds must be a 1-d array")
         if f.shape[0] != n:
             raise ValueError(f"folds length {f.shape[0]} != {n}")
         uniq = np.unique(f)
