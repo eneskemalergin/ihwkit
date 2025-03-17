@@ -19,6 +19,7 @@ class IHWResult:
     nfolds: int
     penalty: str
     adjustment_type: str
+    fold_lambdas: np.ndarray
 
 
 def _iso_mean(y: np.ndarray, w: np.ndarray) -> np.ndarray:
@@ -344,6 +345,7 @@ def _ihw_internal(
         sorted_folds = _assign_folds(n, nfolds, rng)
     m_groups_available = np.bincount(sorted_groups, minlength=nbins).astype(np.intp)
     sorted_weights = np.full(n, np.nan, dtype=np.float64)
+    fold_lambdas = np.full(nfolds, np.inf, dtype=np.float64)
     for fold_idx in range(nfolds):
         fold_mask = sorted_folds == fold_idx
         if not np.any(fold_mask):
@@ -397,6 +399,7 @@ def _ihw_internal(
             adjustment_type,
         )
         sorted_weights[fold_weight_mask] = ws[sorted_groups[fold_weight_mask]]
+        fold_lambdas[fold_idx] = best_lambda
     sorted_weighted = _safe_divide(sorted_pvalues, sorted_weights)
     m_total = int(np.sum(m_groups))
     pad_method = "fdr_bh" if adjustment_type == "bh" else "bonferroni"
@@ -407,6 +410,7 @@ def _ihw_internal(
         "sorted_adj_p": sorted_adj,
         "sorted_weights": sorted_weights,
         "sorted_folds": sorted_folds,
+        "fold_lambdas": fold_lambdas,
     }
 
 
@@ -513,6 +517,7 @@ def adjust_ihw(
             nfolds=1,
             penalty=penalty,
             adjustment_type=adjustment_type,
+            fold_lambdas=np.array([np.inf], dtype=np.float64),
         )
     order = np.argsort(p)
     sorted_folds = None
@@ -556,4 +561,5 @@ def adjust_ihw(
         nfolds=eff_nfolds,
         penalty=penalty,
         adjustment_type=adjustment_type,
+        fold_lambdas=np.asarray(result["fold_lambdas"], dtype=np.float64),
     )

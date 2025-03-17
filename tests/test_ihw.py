@@ -354,3 +354,12 @@ def test_nfolds_follows_supplied_fold_labels() -> None:
     result = adjust_ihw(p, x, 0.1, nbins=4, nfolds=5, folds=folds, seed=1)
     assert result.nfolds == 3
     assert set(result.folds.tolist()) == {0, 1, 2}
+
+
+def test_default_path_records_inf_fold_lambdas() -> None:
+    rng = np.random.default_rng(0)
+    p = rng.uniform(size=80)
+    x = rng.uniform(size=80)
+    result = adjust_ihw(p, x, 0.1, nbins=4, seed=1)
+    assert result.fold_lambdas.shape == (5,)
+    np.testing.assert_array_equal(result.fold_lambdas, np.inf)
