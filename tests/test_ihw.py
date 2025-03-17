@@ -363,3 +363,14 @@ def test_default_path_records_inf_fold_lambdas() -> None:
     result = adjust_ihw(p, x, 0.1, nbins=4, seed=1)
     assert result.fold_lambdas.shape == (5,)
     np.testing.assert_array_equal(result.fold_lambdas, np.inf)
+
+
+def test_bonferroni_vs_bh_with_one_bin() -> None:
+    rng = np.random.default_rng(0)
+    p = rng.uniform(size=80)
+    x = rng.uniform(size=80)
+    bh = adjust_ihw(p, x, 0.1, nbins=1, seed=1)
+    bonf = adjust_ihw(p, x, 0.1, nbins=1, adjustment_type="bonferroni", seed=1)
+    np.testing.assert_allclose(bh.weights, 1.0)
+    np.testing.assert_allclose(bonf.weights, 1.0)
+    assert np.all(bonf.adj_pvalues >= bh.adj_pvalues - 1e-12)
