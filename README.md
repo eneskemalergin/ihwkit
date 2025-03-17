@@ -24,4 +24,6 @@ Default fit is five-fold cross-validation with λ = ∞ (no inner λ search). `e
 
 `nbins="auto"` is `max(1, min(40, n // 1500))`, so n < 1500 is single-bin BH unless `nbins` is set. If the weight LP fails to solve, `adjust_ihw` raises `RuntimeError`.
 
+`covariate_type="nominal"` uses each unique covariate value as a group (not quantile bins). `rng` (or `seed` when `rng` is omitted) drives both bin-tie permutation and fold assignment. `IHWResult.fold_lambdas` is the λ chosen for each fold (all `inf` on the default path).
+
 `IHWResult` also holds `weighted_pvalues`, `groups`, `folds`, `nbins`, and `nfolds`.
