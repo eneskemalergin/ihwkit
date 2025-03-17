@@ -374,3 +374,16 @@ def test_bonferroni_vs_bh_with_one_bin() -> None:
     np.testing.assert_allclose(bh.weights, 1.0)
     np.testing.assert_allclose(bonf.weights, 1.0)
     assert np.all(bonf.adj_pvalues >= bh.adj_pvalues - 1e-12)
+
+
+def test_auto_nbins_below_1500() -> None:
+    rng = np.random.default_rng(0)
+    p_small = rng.uniform(size=1499)
+    x_small = rng.uniform(size=1499)
+    assert adjust_ihw(p_small, x_small, 0.1, seed=1).nbins == 1
+    p_edge = rng.uniform(size=1500)
+    x_edge = rng.uniform(size=1500)
+    assert adjust_ihw(p_edge, x_edge, 0.1, seed=1).nbins == 1
+    p_mid = rng.uniform(size=3000)
+    x_mid = rng.uniform(size=3000)
+    assert adjust_ihw(p_mid, x_mid, 0.1, seed=1).nbins == 2
