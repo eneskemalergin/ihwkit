@@ -1,11 +1,7 @@
-import sys
-from pathlib import Path
-
 import numpy as np
 import pytest
 from scipy.stats import norm
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from ihw import _p_adjust, _thresholds_to_weights, adjust_ihw
 
 _P = np.array([0.1, 0.2, 0.3, 0.4])
