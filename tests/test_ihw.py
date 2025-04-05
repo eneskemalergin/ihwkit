@@ -392,3 +392,16 @@ def test_folds_must_be_1d() -> None:
     folds = rng.integers(0, 5, size=(40, 1))
     with pytest.raises(ValueError, match="1-d"):
         adjust_ihw(p, x, 0.1, nbins=4, folds=folds, seed=1)
+
+
+def test_result_metadata_on_a_default_fit() -> None:
+    rng = np.random.default_rng(0)
+    p = rng.uniform(size=80)
+    x = rng.uniform(size=80)
+    result = adjust_ihw(p, x, 0.1, nbins=4, seed=1)
+    assert result.alpha == 0.1
+    assert result.nbins == 4
+    assert result.nfolds == 5
+    assert result.penalty == "total_variation"
+    assert result.fold_lambdas.shape == (5,)
+    np.testing.assert_array_equal(result.fold_lambdas, np.inf)
