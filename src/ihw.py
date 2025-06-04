@@ -20,6 +20,7 @@ class IHWResult:
     penalty: str
     adjustment_type: str
     fold_lambdas: np.ndarray
+    m_groups: np.ndarray
 
 
 def _iso_mean(y: np.ndarray, w: np.ndarray) -> np.ndarray:
@@ -518,6 +519,7 @@ def adjust_ihw(
             penalty=penalty,
             adjustment_type=adjustment_type,
             fold_lambdas=np.array([np.inf], dtype=np.float64),
+            m_groups=m_groups,
         )
     order = np.argsort(p)
     sorted_folds = None
@@ -564,4 +566,5 @@ def adjust_ihw(
         penalty=penalty,
         adjustment_type=adjustment_type,
         fold_lambdas=np.asarray(result["fold_lambdas"], dtype=np.float64),
+        m_groups=m_groups,
     )

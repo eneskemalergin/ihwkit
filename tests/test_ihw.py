@@ -405,3 +405,14 @@ def test_result_metadata_on_a_default_fit() -> None:
     assert result.penalty == "total_variation"
     assert result.fold_lambdas.shape == (5,)
     np.testing.assert_array_equal(result.fold_lambdas, np.inf)
+
+
+def test_result_includes_bin_counts() -> None:
+    rng = np.random.default_rng(0)
+    p = rng.uniform(size=80)
+    x = rng.uniform(size=80)
+    multi = adjust_ihw(p, x, 0.1, nbins=4, seed=1)
+    assert multi.m_groups.shape == (4,)
+    one = adjust_ihw(p, x, 0.1, nbins=1, seed=1)
+    assert one.m_groups.shape == (1,)
+    np.testing.assert_array_equal(one.m_groups, [80])
