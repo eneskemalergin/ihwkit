@@ -433,3 +433,16 @@ def test_m_groups_matches_the_groups() -> None:
         nominal.m_groups,
         np.bincount(nominal.groups, minlength=nominal.nbins),
     )
+
+
+def test_nominal_null_fdr_is_conservative() -> None:
+    alpha = 0.1
+    n = 2000
+    labels = np.array([0.0] * 200 + [1.0] * 300 + [2.0] * 500 + [3.0] * 1000)
+    rates = []
+    for seed in range(5):
+        rng = np.random.default_rng(seed)
+        p = rng.uniform(size=n)
+        result = adjust_ihw(p, labels, alpha, covariate_type="nominal", seed=1)
+        rates.append(float(np.mean(result.adj_pvalues <= alpha)))
+    assert max(rates) < alpha
