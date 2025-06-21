@@ -446,3 +446,13 @@ def test_nominal_null_fdr_is_conservative() -> None:
         result = adjust_ihw(p, labels, alpha, covariate_type="nominal", seed=1)
         rates.append(float(np.mean(result.adj_pvalues <= alpha)))
     assert max(rates) < alpha
+
+
+def test_weighted_pvalues_stay_in_unit_interval() -> None:
+    rng = np.random.default_rng(0)
+    p = rng.uniform(size=80)
+    x = rng.uniform(size=80)
+    result = adjust_ihw(p, x, 0.1, nbins=4, seed=1)
+    assert np.all(np.isfinite(result.weighted_pvalues))
+    assert np.all(result.weighted_pvalues >= 0.0)
+    assert np.all(result.weighted_pvalues <= 1.0)
