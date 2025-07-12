@@ -304,8 +304,8 @@ def _select_lambda(
     n_internal = internal_p.shape[0]
     scores = np.zeros(lambdas.shape[0], dtype=np.float64)
     for _ in range(nsplits_internal):
-        inner_folds = _assign_folds(n_internal, nfolds_internal, rng)
         for lam_idx, lam in enumerate(lambdas):
+            inner_folds = _assign_folds(n_internal, nfolds_internal, rng)
             result = _ihw_internal(
                 internal_g,
                 internal_p,

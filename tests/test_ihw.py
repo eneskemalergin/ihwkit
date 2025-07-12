@@ -480,3 +480,29 @@ def test_preset_bins_lambdas_and_m_groups_run() -> None:
     np.testing.assert_array_equal(result.fold_lambdas, fl)
     assert np.all(np.isfinite(result.weights))
     assert np.all(np.isfinite(result.adj_pvalues))
+
+
+def test_inner_folds_redrawn_per_lambda(monkeypatch: pytest.MonkeyPatch) -> None:
+    import ihw as ihw_mod
+
+    calls: list[int] = []
+    orig = ihw_mod._assign_folds
+
+    def counted(n: int, nfolds: int, rng: np.random.Generator) -> np.ndarray:
+        calls.append(nfolds)
+        return orig(n, nfolds, rng)
+
+    monkeypatch.setattr(ihw_mod, "_assign_folds", counted)
+    rng = np.random.default_rng(0)
+    p = rng.uniform(size=80)
+    x = rng.uniform(size=80)
+    folds = np.zeros(80, dtype=np.intp)
+    short = [0.0, np.inf]
+    adjust_ihw(p, x, 0.1, nbins=4, folds=folds, lambdas=short, seed=1)
+    n_short = len(calls)
+    calls.clear()
+    long = [0.0, 1.0, np.inf]
+    adjust_ihw(p, x, 0.1, nbins=4, folds=folds, lambdas=long, seed=1)
+    n_long = len(calls)
+    assert n_short == len(short)
+    assert n_long == len(long)
