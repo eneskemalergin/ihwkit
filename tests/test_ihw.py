@@ -456,3 +456,27 @@ def test_weighted_pvalues_stay_in_unit_interval() -> None:
     assert np.all(np.isfinite(result.weighted_pvalues))
     assert np.all(result.weighted_pvalues >= 0.0)
     assert np.all(result.weighted_pvalues <= 1.0)
+
+
+def test_preset_bins_lambdas_and_m_groups_run() -> None:
+    rng = np.random.default_rng(0)
+    p = rng.uniform(size=80)
+    x = rng.uniform(size=80)
+    g = np.array([0, 1, 2, 3] * 20)
+    mg = np.bincount(g, minlength=4) + 10
+    fl = np.full(5, np.inf)
+    result = adjust_ihw(
+        p,
+        x,
+        0.1,
+        nbins=4,
+        groups=g,
+        m_groups=mg,
+        fold_lambdas=fl,
+        seed=1,
+    )
+    np.testing.assert_array_equal(result.groups, g)
+    np.testing.assert_array_equal(result.m_groups, mg)
+    np.testing.assert_array_equal(result.fold_lambdas, fl)
+    assert np.all(np.isfinite(result.weights))
+    assert np.all(np.isfinite(result.adj_pvalues))

@@ -338,6 +338,7 @@ def _ihw_internal(
     adjustment_type: str,
     rng: np.random.Generator,
     sorted_folds: np.ndarray | None,
+    preset_fold_lambdas: np.ndarray | None = None,
 ) -> dict:
     n = sorted_pvalues.shape[0]
     nbins = m_groups.shape[0]
@@ -346,7 +347,10 @@ def _ihw_internal(
         sorted_folds = _assign_folds(n, nfolds, rng)
     m_groups_available = np.bincount(sorted_groups, minlength=nbins).astype(np.intp)
     sorted_weights = np.full(n, np.nan, dtype=np.float64)
-    fold_lambdas = np.full(nfolds, np.inf, dtype=np.float64)
+    if preset_fold_lambdas is None:
+        fold_lambdas = np.full(nfolds, np.inf, dtype=np.float64)
+    else:
+        fold_lambdas = np.asarray(preset_fold_lambdas, dtype=np.float64).copy()
     for fold_idx in range(nfolds):
         fold_mask = sorted_folds == fold_idx
         if not np.any(fold_mask):
@@ -375,7 +379,9 @@ def _ihw_internal(
         m_holdout = np.maximum(m_holdout, 0)
         m_train = np.maximum(m_train, 0)
         train_split = _split_pvalues_by_group(train_pvalues, train_groups, nbins)
-        if lambdas.shape[0] == 1:
+        if preset_fold_lambdas is not None:
+            best_lambda = float(preset_fold_lambdas[fold_idx])
+        elif lambdas.shape[0] == 1:
             best_lambda = float(lambdas[0])
         else:
             best_lambda = _select_lambda(
@@ -429,6 +435,9 @@ def adjust_ihw(
     lambdas=None,
     adjustment_type: str = "bh",
     folds=None,
+    groups=None,
+    fold_lambdas=None,
+    m_groups=None,
     rng: np.random.Generator | None = None,
     seed: int | None = 1,
 ) -> IHWResult:
@@ -464,20 +473,44 @@ def adjust_ihw(
     if rng is None:
         rng = np.random.default_rng(seed)
     penalty = "total_variation" if covariate_type == "ordinal" else "uniform_deviation"
-    if isinstance(nbins, str):
-        if nbins != "auto":
-            raise ValueError(f"nbins must be an integer or 'auto', got {nbins!r}")
-        nbins_i = max(1, min(40, n // 1500))
+    if groups is not None:
+        g = np.asarray(groups, dtype=np.intp)
+        if g.ndim != 1:
+            raise ValueError("groups must be a 1-d array")
+        if g.shape[0] != n:
+            raise ValueError(f"groups length {g.shape[0]} != {n}")
+        uniq_g = np.unique(g)
+        nbins_i = int(uniq_g.size)
+        if nbins_i == 0 or not np.array_equal(uniq_g, np.arange(nbins_i)):
+            raise ValueError("groups labels must be in 0 .. nbins-1 with no gaps")
+        if not isinstance(nbins, str) and int(nbins) != nbins_i:
+            raise ValueError(f"nbins {int(nbins)} does not match groups")
+        group_id = g
     else:
-        nbins_i = int(nbins)
-        if nbins_i <= 0:
-            raise ValueError(f"nbins must be positive, got {nbins}")
-    if covariate_type == "nominal":
-        groups = np.unique(x, return_inverse=True)[1].astype(np.intp)
-        nbins_i = int(np.unique(groups).size)
+        if isinstance(nbins, str):
+            if nbins != "auto":
+                raise ValueError(f"nbins must be an integer or 'auto', got {nbins!r}")
+            nbins_i = max(1, min(40, n // 1500))
+        else:
+            nbins_i = int(nbins)
+            if nbins_i <= 0:
+                raise ValueError(f"nbins must be positive, got {nbins}")
+        if covariate_type == "nominal":
+            group_id = np.unique(x, return_inverse=True)[1].astype(np.intp)
+            nbins_i = int(np.unique(group_id).size)
+        else:
+            group_id = _groups_by_filter(x, nbins_i, rng)
+    if m_groups is not None:
+        mg = np.asarray(m_groups, dtype=np.intp)
+        if mg.ndim != 1:
+            raise ValueError("m_groups must be a 1-d array")
+        if mg.shape[0] != nbins_i:
+            raise ValueError(f"m_groups length {mg.shape[0]} != {nbins_i}")
+        if np.any(mg < 0):
+            raise ValueError("m_groups must be nonnegative")
+        m_groups_arr = mg
     else:
-        groups = _groups_by_filter(x, nbins_i, rng)
-    m_groups = np.bincount(groups, minlength=nbins_i).astype(np.intp)
+        m_groups_arr = np.bincount(group_id, minlength=nbins_i).astype(np.intp)
     if exploratory:
         eff_nfolds = 1
         lam_grid = np.array([np.inf], dtype=np.float64)
@@ -504,14 +537,14 @@ def adjust_ihw(
     pad_method = "fdr_bh" if adjustment_type == "bh" else "bonferroni"
     if nbins_i == 1:
         order = np.argsort(p)
-        adj_sorted = _p_adjust(p[order], pad_method, n_tests=n)
+        adj_sorted = _p_adjust(p[order], pad_method, n_tests=int(np.sum(m_groups_arr)))
         inv = np.argsort(order)
         return IHWResult(
             pvalues=p,
             adj_pvalues=adj_sorted[inv],
             weights=np.ones(n, dtype=np.float64),
             weighted_pvalues=p.copy(),
-            groups=groups,
+            groups=group_id,
             folds=np.zeros(n, dtype=np.intp),
             alpha=alpha,
             nbins=1,
@@ -519,7 +552,7 @@ def adjust_ihw(
             penalty=penalty,
             adjustment_type=adjustment_type,
             fold_lambdas=np.array([np.inf], dtype=np.float64),
-            m_groups=m_groups,
+            m_groups=m_groups_arr,
         )
     order = np.argsort(p)
     sorted_folds = None
@@ -538,12 +571,26 @@ def adjust_ihw(
         elif nfolds_f != 1:
             raise ValueError("folds labels must be in 0 .. nfolds-1 with no gaps")
         sorted_folds = f[order]
+    preset_lams = None
+    if fold_lambdas is not None and not exploratory:
+        fl = np.asarray(fold_lambdas, dtype=np.float64)
+        if fl.ndim != 1:
+            raise ValueError("fold_lambdas must be a 1-d array")
+        if fl.shape[0] != eff_nfolds:
+            raise ValueError(f"fold_lambdas length {fl.shape[0]} != {eff_nfolds}")
+        if fl.size == 0:
+            raise ValueError("fold_lambdas must not be empty")
+        if np.any(np.isnan(fl)):
+            raise ValueError("fold_lambdas must be finite or +inf")
+        if np.any(fl < 0.0):
+            raise ValueError("fold_lambdas must be nonnegative")
+        preset_lams = fl
     result = _ihw_internal(
-        groups[order],
+        group_id[order],
         p[order],
         alpha,
         lam_grid,
-        m_groups,
+        m_groups_arr,
         penalty,
         eff_nfolds,
         nfolds_internal,
@@ -551,6 +598,7 @@ def adjust_ihw(
         adjustment_type,
         rng,
         sorted_folds,
+        preset_lams,
     )
     inv = np.argsort(order)
     return IHWResult(
@@ -558,7 +606,7 @@ def adjust_ihw(
         adj_pvalues=np.asarray(result["sorted_adj_p"], dtype=np.float64)[inv],
         weights=np.asarray(result["sorted_weights"], dtype=np.float64)[inv],
         weighted_pvalues=np.asarray(result["sorted_weighted_pvalues"], dtype=np.float64)[inv],
-        groups=groups,
+        groups=group_id,
         folds=np.asarray(result["sorted_folds"], dtype=np.intp)[inv],
         alpha=alpha,
         nbins=nbins_i,
@@ -566,5 +614,5 @@ def adjust_ihw(
         penalty=penalty,
         adjustment_type=adjustment_type,
         fold_lambdas=np.asarray(result["fold_lambdas"], dtype=np.float64),
-        m_groups=m_groups,
+        m_groups=m_groups_arr,
     )
