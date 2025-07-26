@@ -506,3 +506,14 @@ def test_inner_folds_redrawn_per_lambda(monkeypatch: pytest.MonkeyPatch) -> None
     n_long = len(calls)
     assert n_short == len(short)
     assert n_long == len(long)
+
+
+def test_preset_groups_skip_binning() -> None:
+    rng = np.random.default_rng(0)
+    p = rng.uniform(size=80)
+    x = np.arange(80).astype(float)
+    g = np.array([0, 1, 2, 3] * 20)
+    result = adjust_ihw(p, x, 0.1, nbins=4, groups=g, seed=1)
+    np.testing.assert_array_equal(result.groups, g)
+    binned = adjust_ihw(p, x, 0.1, nbins=4, seed=1)
+    assert not np.array_equal(binned.groups, g)
