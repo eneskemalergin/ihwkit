@@ -517,3 +517,18 @@ def test_preset_groups_skip_binning() -> None:
     np.testing.assert_array_equal(result.groups, g)
     binned = adjust_ihw(p, x, 0.1, nbins=4, seed=1)
     assert not np.array_equal(binned.groups, g)
+
+
+def test_preset_fold_lambdas_skip_inner_cv(monkeypatch: pytest.MonkeyPatch) -> None:
+    import ihw as ihw_mod
+
+    def boom(*args, **kwargs):
+        raise AssertionError("inner cv should not run")
+
+    monkeypatch.setattr(ihw_mod, "_select_lambda", boom)
+    rng = np.random.default_rng(0)
+    p = rng.uniform(size=80)
+    x = rng.uniform(size=80)
+    fl = np.array([0.0, 0.5, 1.0, 2.0, np.inf])
+    result = adjust_ihw(p, x, 0.1, nbins=4, fold_lambdas=fl, lambdas="auto", seed=1)
+    np.testing.assert_array_equal(result.fold_lambdas, fl)
