@@ -532,3 +532,24 @@ def test_preset_fold_lambdas_skip_inner_cv(monkeypatch: pytest.MonkeyPatch) -> N
     fl = np.array([0.0, 0.5, 1.0, 2.0, np.inf])
     result = adjust_ihw(p, x, 0.1, nbins=4, fold_lambdas=fl, lambdas="auto", seed=1)
     np.testing.assert_array_equal(result.fold_lambdas, fl)
+
+
+def test_m_groups_with_a_subset_of_pvalues() -> None:
+    rng = np.random.default_rng(0)
+    p = rng.uniform(size=80)
+    x = rng.uniform(size=80)
+    g = np.array([0, 1, 2, 3] * 20)
+    mg = np.bincount(g, minlength=4) + 50
+    keep = np.arange(40)
+    result = adjust_ihw(
+        p[keep],
+        x[keep],
+        0.1,
+        nbins=4,
+        groups=g[keep],
+        m_groups=mg,
+        seed=1,
+    )
+    assert np.all(np.isfinite(result.weights))
+    assert np.all(np.isfinite(result.adj_pvalues))
+    np.testing.assert_array_equal(result.m_groups, mg)
