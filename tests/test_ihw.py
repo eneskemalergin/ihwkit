@@ -565,3 +565,13 @@ def test_frozen_partition_is_deterministic() -> None:
     b = adjust_ihw(p, x, 0.1, nbins=4, groups=g, folds=folds, rng=np.random.default_rng(99))
     np.testing.assert_allclose(a.weights, b.weights)
     np.testing.assert_array_equal(a.groups, g)
+
+
+def test_single_fold_inf_lambda_with_preset_groups() -> None:
+    rng = np.random.default_rng(0)
+    p = rng.uniform(size=80)
+    x = rng.uniform(size=80)
+    g = np.array([0, 1, 2, 3] * 20)
+    result = adjust_ihw(p, x, 0.1, nbins=4, nfolds=1, groups=g, seed=1)
+    assert result.nfolds == 1
+    np.testing.assert_array_equal(result.fold_lambdas, [np.inf])
