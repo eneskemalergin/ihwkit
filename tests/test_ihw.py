@@ -553,3 +553,15 @@ def test_m_groups_with_a_subset_of_pvalues() -> None:
     assert np.all(np.isfinite(result.weights))
     assert np.all(np.isfinite(result.adj_pvalues))
     np.testing.assert_array_equal(result.m_groups, mg)
+
+
+def test_frozen_partition_is_deterministic() -> None:
+    rng = np.random.default_rng(0)
+    p = rng.uniform(size=80)
+    x = rng.uniform(size=80)
+    g = np.array([0, 1, 2, 3] * 20)
+    folds = np.array([0, 1, 2, 3, 4] * 16)
+    a = adjust_ihw(p, x, 0.1, nbins=4, groups=g, folds=folds, rng=np.random.default_rng(1))
+    b = adjust_ihw(p, x, 0.1, nbins=4, groups=g, folds=folds, rng=np.random.default_rng(99))
+    np.testing.assert_allclose(a.weights, b.weights)
+    np.testing.assert_array_equal(a.groups, g)
