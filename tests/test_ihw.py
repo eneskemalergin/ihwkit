@@ -575,3 +575,19 @@ def test_single_fold_inf_lambda_with_preset_groups() -> None:
     result = adjust_ihw(p, x, 0.1, nbins=4, nfolds=1, groups=g, seed=1)
     assert result.nfolds == 1
     np.testing.assert_array_equal(result.fold_lambdas, [np.inf])
+
+
+def test_ihw_beats_bh_on_a_mixture_sim() -> None:
+    rng = np.random.default_rng(4)
+    n = 2000
+    alpha = 0.1
+    cov = rng.uniform(0.0, 1.0, size=n)
+    pi_alt = 0.02 + 0.35 * cov
+    is_alt = rng.uniform(size=n) < pi_alt
+    z = rng.normal(loc=np.where(is_alt, 1.5 + 1.5 * cov, 0.0))
+    p = 1.0 - norm.cdf(z)
+    result = adjust_ihw(p, cov, alpha, nbins=4, seed=1)
+    bh_adj = _p_adjust(p, "fdr_bh")
+    ihw_rej = int(np.sum(result.adj_pvalues <= alpha))
+    bh_rej = int(np.sum(bh_adj <= alpha))
+    assert ihw_rej >= bh_rej
