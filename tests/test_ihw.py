@@ -591,3 +591,11 @@ def test_ihw_beats_bh_on_a_mixture_sim() -> None:
     ihw_rej = int(np.sum(result.adj_pvalues <= alpha))
     bh_rej = int(np.sum(bh_adj <= alpha))
     assert ihw_rej >= bh_rej
+
+
+def test_constant_pvalues() -> None:
+    p = np.full(80, 0.5)
+    x = np.linspace(0.0, 1.0, 80)
+    result = adjust_ihw(p, x, 0.1, nbins=4, seed=1)
+    assert np.all(np.isfinite(result.weights))
+    assert np.all(np.isfinite(result.adj_pvalues))
