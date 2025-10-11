@@ -29,3 +29,5 @@ Default fit is five-fold cross-validation with λ = ∞ (no inner λ search). `e
 Pass `groups=`, `folds=`, `fold_lambdas=`, and `m_groups=` to freeze the partition and regularization. Preset `groups=` skips covariate binning. Preset `fold_lambdas=` skips the inner λ search. Preset `m_groups=` is the filtered-p path: BH uses `sum(m_groups)` even when only a subset of p-values is observed.
 
 `IHWResult` also holds `weighted_pvalues`, `groups`, `folds`, `nbins`, `nfolds`, `m_groups`, and `fold_lambdas`.
+
+Default here is λ=∞ and nfolds=5. R IHW defaults to `lambdas="auto"`. The path meant for later R checks is λ=∞ with frozen `groups=`.
