@@ -599,3 +599,13 @@ def test_constant_pvalues() -> None:
     result = adjust_ihw(p, x, 0.1, nbins=4, seed=1)
     assert np.all(np.isfinite(result.weights))
     assert np.all(np.isfinite(result.adj_pvalues))
+
+
+def test_auto_lambda_picks_from_the_grid() -> None:
+    rng = np.random.default_rng(0)
+    p = rng.uniform(size=80)
+    x = rng.uniform(size=80)
+    result = adjust_ihw(p, x, 0.1, nbins=4, lambdas="auto", seed=1)
+    allowed = {0.0, 0.5, 1.0, 2.0, 4.0, np.inf}
+    for lam in result.fold_lambdas:
+        assert float(lam) in allowed
