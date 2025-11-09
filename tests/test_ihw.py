@@ -609,3 +609,19 @@ def test_auto_lambda_picks_from_the_grid() -> None:
     allowed = {0.0, 0.5, 1.0, 2.0, 4.0, np.inf}
     for lam in result.fold_lambdas:
         assert float(lam) in allowed
+
+
+def test_power_vs_bh_on_more_seeds() -> None:
+    alpha = 0.1
+    n = 2000
+    for sim_seed in (3, 11, 23):
+        rng = np.random.default_rng(sim_seed)
+        cov = rng.uniform(0.0, 3.0, size=n)
+        signals = rng.binomial(1, 0.12, size=n).astype(bool)
+        z = rng.normal(loc=signals * cov)
+        p = 1.0 - norm.cdf(z)
+        result = adjust_ihw(p, cov, alpha, nbins=4, seed=1)
+        bh_adj = _p_adjust(p, "fdr_bh")
+        ihw_rej = int(np.sum(result.adj_pvalues <= alpha))
+        bh_rej = int(np.sum(bh_adj <= alpha))
+        assert ihw_rej >= bh_rej
