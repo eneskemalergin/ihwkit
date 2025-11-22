@@ -634,3 +634,12 @@ def test_auto_lambda_with_two_inner_splits() -> None:
     result = adjust_ihw(p, x, 0.1, nbins=4, lambdas="auto", nsplits_internal=2, seed=1)
     assert np.all(np.isfinite(result.weights))
     assert np.all(np.isfinite(result.adj_pvalues))
+
+
+def test_exploratory_ignores_the_auto_lambda_grid() -> None:
+    rng = np.random.default_rng(0)
+    p = rng.uniform(size=80)
+    x = rng.uniform(size=80)
+    result = adjust_ihw(p, x, 0.1, nbins=4, exploratory=True, lambdas="auto", seed=1)
+    assert result.nfolds == 1
+    np.testing.assert_array_equal(result.fold_lambdas, [np.inf])
