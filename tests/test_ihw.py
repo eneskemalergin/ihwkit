@@ -625,3 +625,12 @@ def test_power_vs_bh_on_more_seeds() -> None:
         ihw_rej = int(np.sum(result.adj_pvalues <= alpha))
         bh_rej = int(np.sum(bh_adj <= alpha))
         assert ihw_rej >= bh_rej
+
+
+def test_auto_lambda_with_two_inner_splits() -> None:
+    rng = np.random.default_rng(0)
+    p = rng.uniform(size=400)
+    x = rng.uniform(size=400)
+    result = adjust_ihw(p, x, 0.1, nbins=4, lambdas="auto", nsplits_internal=2, seed=1)
+    assert np.all(np.isfinite(result.weights))
+    assert np.all(np.isfinite(result.adj_pvalues))
