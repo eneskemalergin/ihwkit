@@ -1,15 +1,13 @@
 from pathlib import Path
 
 import numpy as np
-import pytest
 
 from ihw import adjust_ihw
 
 ORACLE = Path(__file__).resolve().parent / "fixtures" / "r_inf_n1.npz"
 
 
-@pytest.mark.skipif(not ORACLE.is_file(), reason="r_inf_n1.npz is absent")
-def test_python_replay_matches_r_oracle_when_present() -> None:
+def test_python_replay_matches_r_oracle() -> None:
     data = np.load(ORACLE)
     p = np.asarray(data["p"], dtype=np.float64)
     x = np.asarray(data["x"], dtype=np.float64)
