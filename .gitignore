@@ -20,3 +20,9 @@ htmlcov/
 tmp/
 ref/
 plan/
+
+renv.lock
+renv/
+.Rprofile
+.Renviron
+.R/

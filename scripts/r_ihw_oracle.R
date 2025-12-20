@@ -26,12 +26,12 @@ load_st <- system2(
   py,
   c(
     "-c",
-    sprintf(
+    shQuote(sprintf(
       "import numpy as np; d=np.load(r'%s'); np.savetxt(r'%s', d['p']); np.savetxt(r'%s', d['x'])",
       sim,
       p_csv,
       x_csv
-    )
+    ))
   )
 )
 if (!identical(load_st, 0L)) {
@@ -65,7 +65,7 @@ save_st <- system2(
   py,
   c(
     "-c",
-    sprintf(
+    shQuote(sprintf(
       paste(
         "import numpy as np",
         "p=np.loadtxt(r'%s')",
@@ -84,7 +84,7 @@ save_st <- system2(
       w_csv,
       r_txt,
       out
-    )
+    ))
   )
 )
 if (!identical(save_st, 0L)) {
