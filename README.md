@@ -30,4 +30,4 @@ Pass `groups=`, `folds=`, `fold_lambdas=`, and `m_groups=` to freeze the partiti
 
 `IHWResult` also holds `weighted_pvalues`, `groups`, `folds`, `nbins`, `nfolds`, `m_groups`, and `fold_lambdas`.
 
-Default here is λ=∞ and nfolds=5. R IHW defaults to `lambdas="auto"`. The path meant for later R checks is λ=∞ with frozen `groups=`.
+Default here is λ=∞ and nfolds=5. R IHW defaults to `lambdas="auto"`. The stored comparable file is `tests/fixtures/r_inf_n1.npz` (λ=∞, nfolds=1, frozen `groups=`). Unfrozen `seed` is not claimed to match R.
