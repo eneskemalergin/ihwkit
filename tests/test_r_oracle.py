@@ -1,7 +1,6 @@
 from pathlib import Path
 
 import numpy as np
-import pytest
 
 from ihw import adjust_ihw
 
@@ -38,8 +37,7 @@ def test_python_replay_matches_r_oracle() -> None:
     assert ihw_rej == int(data["rejections"])
 
 
-@pytest.mark.skipif(not ORACLE_N5.is_file(), reason="r_inf_n5.npz is absent")
-def test_python_replay_matches_five_fold_r_oracle_when_present() -> None:
+def test_python_replay_matches_five_fold_r_oracle() -> None:
     data = np.load(ORACLE_N5)
     p = np.asarray(data["p"], dtype=np.float64)
     x = np.asarray(data["x"], dtype=np.float64)
