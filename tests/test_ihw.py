@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 from scipy.stats import norm
 
-from ihw import _p_adjust, _thresholds_to_weights, adjust_ihw
+from ihw import _p_adjust, _solve_lp, _thresholds_to_weights, adjust_ihw
 
 _P = np.array([0.1, 0.2, 0.3, 0.4])
 _X = np.array([1.0, 2.0, 3.0, 4.0])
@@ -71,6 +71,65 @@ def test_default_lp_backend_still_runs() -> None:
     assert np.all(np.isfinite(result.weights))
     assert np.all(np.isfinite(result.adj_pvalues))
     np.testing.assert_allclose(np.mean(result.weights), 1.0, atol=1e-8)
+
+
+def test_numpy_lp_matches_highs_on_textbook() -> None:
+    c = np.array([3.0, 4.0])
+    a = np.array([[1.0, 2.0], [3.0, 1.0]])
+    b = np.array([8.0, 9.0])
+    lb = np.zeros(2)
+    ub = np.full(2, np.inf)
+    x_highs = _solve_lp(c, a, b, lb, ub, "highs")
+    x_numpy = _solve_lp(c, a, b, lb, ub, "numpy")
+    np.testing.assert_allclose(x_numpy, np.array([2.0, 3.0]), atol=1e-8)
+    np.testing.assert_allclose(x_numpy, x_highs, atol=1e-8)
+    np.testing.assert_allclose(c @ x_numpy, 18.0, atol=1e-8)
+
+
+def test_numpy_lp_respects_box_bounds() -> None:
+    c = np.array([1.0, 1.0])
+    a = np.zeros((0, 2))
+    b = np.zeros(0)
+    lb = np.zeros(2)
+    ub = np.array([1.0, 2.0])
+    x_numpy = _solve_lp(c, a, b, lb, ub, "numpy")
+    x_highs = _solve_lp(c, a, b, lb, ub, "highs")
+    np.testing.assert_allclose(x_numpy, np.array([1.0, 2.0]), atol=1e-8)
+    np.testing.assert_allclose(x_numpy, x_highs, atol=1e-8)
+
+
+def test_numpy_lp_matches_highs_on_random_box_lps() -> None:
+    rng = np.random.default_rng(1)
+    for _ in range(12):
+        n = 8
+        m = 12
+        a = rng.normal(size=(m, n))
+        x_true = rng.uniform(0.0, 2.0, size=n)
+        b = a @ x_true + rng.uniform(0.1, 1.0, size=m)
+        c = rng.normal(size=n)
+        lb = np.zeros(n)
+        ub = np.full(n, 2.0)
+        x_highs = _solve_lp(c, a, b, lb, ub, "highs")
+        x_numpy = _solve_lp(c, a, b, lb, ub, "numpy")
+        np.testing.assert_allclose(c @ x_numpy, c @ x_highs, atol=1e-7, rtol=1e-7)
+        assert np.max(a @ x_numpy - b) < 1e-7
+        assert np.all(x_numpy >= -1e-8)
+        assert np.all(x_numpy <= 2.0 + 1e-8)
+
+
+def test_numpy_lp_infeasible_raises() -> None:
+    c = np.array([1.0])
+    a = np.array([[1.0], [-1.0]])
+    b = np.array([-1.0, -1.0])
+    lb = np.zeros(1)
+    ub = np.array([10.0])
+    with pytest.raises(RuntimeError, match="did not solve"):
+        _solve_lp(c, a, b, lb, ub, "numpy")
+
+
+def test_adjust_ihw_still_rejects_numpy_backend() -> None:
+    with pytest.raises(ValueError, match="lp_backend"):
+        adjust_ihw(_P, _X, 0.1, lp_backend="numpy")
 
 
 def test_single_bin_matches_bh() -> None:

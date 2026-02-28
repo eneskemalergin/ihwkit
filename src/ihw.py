@@ -167,6 +167,205 @@ def _split_pvalues_by_group(pvalues: np.ndarray, groups: np.ndarray, nbins: int)
     return out
 
 
+_LP_EPS = 1e-9
+_LP_MAX_ITER = 250000
+
+
+def _revised_simplex(
+    c: np.ndarray,
+    a: np.ndarray,
+    b: np.ndarray,
+    basis: list[int],
+    eps: float,
+    max_iter: int,
+) -> tuple[np.ndarray, list[int]]:
+    m, n = a.shape
+    basis = [int(i) for i in basis]
+    basic = set(basis)
+    for _ in range(max_iter):
+        bmat = a[:, basis]
+        try:
+            xb = np.linalg.solve(bmat, b)
+            pi = np.linalg.solve(bmat.T, c[basis])
+        except np.linalg.LinAlgError as exc:
+            raise RuntimeError("weight LP did not solve: singular basis") from exc
+        reduced = c - a.T @ pi
+        enter = -1
+        for j in range(n):
+            if j in basic:
+                continue
+            if reduced[j] < -eps:
+                enter = j
+                break
+        if enter < 0:
+            x = np.zeros(n, dtype=np.float64)
+            x[basis] = np.maximum(xb, 0.0)
+            return x, basis
+        try:
+            direction = np.linalg.solve(bmat, a[:, enter])
+        except np.linalg.LinAlgError as exc:
+            raise RuntimeError("weight LP did not solve: singular basis") from exc
+        leave = -1
+        best_ratio = np.inf
+        best_var = n + 1
+        for i in range(m):
+            if direction[i] <= eps:
+                continue
+            ratio = xb[i] / direction[i]
+            if ratio < -eps:
+                continue
+            var = basis[i]
+            if ratio < best_ratio - eps or (abs(ratio - best_ratio) <= eps and var < best_var):
+                best_ratio = ratio
+                best_var = var
+                leave = i
+        if leave < 0:
+            raise RuntimeError("weight LP did not solve: unbounded")
+        basic.remove(basis[leave])
+        basis[leave] = enter
+        basic.add(enter)
+    raise RuntimeError("weight LP did not solve: iteration limit")
+
+
+def _clear_artificial_basis(
+    a: np.ndarray,
+    basis: list[int],
+    n_struct: int,
+    eps: float,
+) -> list[int]:
+    m = a.shape[0]
+    a_aug = np.hstack([a, np.eye(m)])
+    for i in range(m):
+        if basis[i] < n_struct:
+            continue
+        bmat = a_aug[:, basis]
+        try:
+            binva = np.linalg.solve(bmat, a)
+        except np.linalg.LinAlgError:
+            continue
+        enter = -1
+        for j in range(n_struct):
+            if j in basis:
+                continue
+            if abs(binva[i, j]) > eps:
+                enter = j
+                break
+        if enter >= 0:
+            basis[i] = enter
+    return basis
+
+
+def _two_phase_simplex(c: np.ndarray, a: np.ndarray, b: np.ndarray) -> np.ndarray:
+    a = np.array(a, dtype=np.float64, copy=True)
+    b = np.array(b, dtype=np.float64, copy=True)
+    c = np.array(c, dtype=np.float64, copy=True)
+    if a.ndim != 2:
+        raise RuntimeError("weight LP did not solve: bad constraint matrix")
+    m, n = a.shape
+    if m == 0:
+        if np.any(c < -_LP_EPS):
+            raise RuntimeError("weight LP did not solve: unbounded")
+        return np.zeros(n, dtype=np.float64)
+    for i in range(m):
+        if b[i] < 0.0:
+            a[i] *= -1.0
+            b[i] *= -1.0
+    row_scale = np.max(np.abs(a), axis=1)
+    zero_row = row_scale <= _LP_EPS
+    if np.any(zero_row & (np.abs(b) > _LP_EPS)):
+        raise RuntimeError("weight LP did not solve: infeasible")
+    keep = ~zero_row
+    a = a[keep]
+    b = b[keep]
+    if a.shape[0] == 0:
+        if np.any(c < -_LP_EPS):
+            raise RuntimeError("weight LP did not solve: unbounded")
+        return np.zeros(n, dtype=np.float64)
+    row_scale = np.max(np.abs(a), axis=1)
+    a = a / row_scale[:, None]
+    b = b / row_scale
+    m = a.shape[0]
+    a1 = np.hstack([a, np.eye(m)])
+    c1 = np.concatenate([np.zeros(n, dtype=np.float64), np.ones(m, dtype=np.float64)])
+    basis = list(range(n, n + m))
+    x1, basis = _revised_simplex(c1, a1, b, basis, _LP_EPS, _LP_MAX_ITER)
+    if float(np.dot(c1, x1)) > 1e3 * _LP_EPS:
+        raise RuntimeError("weight LP did not solve: infeasible")
+    basis = _clear_artificial_basis(a, basis, n, _LP_EPS)
+    keep_idx = [i for i in range(m) if basis[i] < n]
+    if len(keep_idx) != m:
+        a = a[keep_idx]
+        b = b[keep_idx]
+        basis = [basis[i] for i in keep_idx]
+    if a.shape[0] == 0:
+        x = np.zeros(n, dtype=np.float64)
+    else:
+        x, _ = _revised_simplex(c, a, b, basis, _LP_EPS, _LP_MAX_ITER)
+    return x[:n]
+
+
+def _solve_lp_numpy(
+    objective: np.ndarray,
+    a_ub: np.ndarray,
+    b_ub: np.ndarray,
+    lb: np.ndarray,
+    ub: np.ndarray,
+) -> np.ndarray:
+    c = np.asarray(objective, dtype=np.float64).ravel()
+    a_ub = np.asarray(a_ub, dtype=np.float64)
+    b_ub = np.asarray(b_ub, dtype=np.float64).ravel()
+    lb = np.asarray(lb, dtype=np.float64).ravel()
+    ub = np.asarray(ub, dtype=np.float64).ravel()
+    n = c.shape[0]
+    if a_ub.size == 0:
+        a_ub = np.zeros((0, n), dtype=np.float64)
+    else:
+        a_ub = np.atleast_2d(a_ub)
+    if a_ub.shape[1] != n or lb.shape[0] != n or ub.shape[0] != n:
+        raise RuntimeError("weight LP did not solve: shape mismatch")
+    if np.any(~np.isfinite(lb)):
+        raise RuntimeError("weight LP did not solve: infinite lower bound")
+    b_shift = b_ub - a_ub @ lb
+    a_work = a_ub.copy()
+    finite_ub = np.isfinite(ub)
+    if np.any(finite_ub):
+        ub_idx = np.flatnonzero(finite_ub)
+        cap = ub[ub_idx] - lb[ub_idx]
+        if np.any(cap < -_LP_EPS):
+            raise RuntimeError("weight LP did not solve: empty bounds")
+        ub_rows = np.zeros((ub_idx.shape[0], n), dtype=np.float64)
+        ub_rows[np.arange(ub_idx.shape[0]), ub_idx] = 1.0
+        a_work = np.vstack([a_work, ub_rows])
+        b_shift = np.concatenate([b_shift, np.maximum(cap, 0.0)])
+    m = a_work.shape[0]
+    if m == 0:
+        y = np.zeros(n, dtype=np.float64)
+        for j in range(n):
+            if c[j] > _LP_EPS:
+                if not np.isfinite(ub[j]):
+                    raise RuntimeError("weight LP did not solve: unbounded")
+                y[j] = ub[j] - lb[j]
+            else:
+                y[j] = 0.0
+        return y + lb
+    a_eq = np.hstack([a_work, np.eye(m)])
+    c_min = np.concatenate([-c, np.zeros(m, dtype=np.float64)])
+    z = _two_phase_simplex(c_min, a_eq, b_shift)
+    y = z[:n]
+    y = np.maximum(y, 0.0)
+    y[y < 1e-10] = 0.0
+    x = y + lb
+    snap = 1e-10
+    near_lb = x - lb <= snap
+    x[near_lb] = lb[near_lb]
+    finite = np.isfinite(ub)
+    near_ub = finite & (ub - x <= snap)
+    x[near_ub] = ub[near_ub]
+    if not np.all(np.isfinite(x)):
+        raise RuntimeError("weight LP did not solve: non-finite solution")
+    return x
+
+
 def _solve_lp(
     objective: np.ndarray,
     a_ub: np.ndarray,
@@ -175,6 +374,8 @@ def _solve_lp(
     ub: np.ndarray,
     lp_backend: str = "highs",
 ) -> np.ndarray:
+    if lp_backend == "numpy":
+        return _solve_lp_numpy(objective, a_ub, b_ub, lb, ub)
     if lp_backend != "highs":
         raise ValueError(f"Unknown lp_backend: {lp_backend!r}")
     n = objective.shape[0]
