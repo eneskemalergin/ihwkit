@@ -3,7 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import numpy as np
-from scipy.optimize import linprog
+
+linprog = None
 
 
 @dataclass(frozen=True)
@@ -378,6 +379,11 @@ def _solve_lp(
         return _solve_lp_numpy(objective, a_ub, b_ub, lb, ub)
     if lp_backend != "highs":
         raise ValueError(f"Unknown lp_backend: {lp_backend!r}")
+    global linprog
+    if linprog is None:
+        from scipy.optimize import linprog as _linprog
+
+        linprog = _linprog
     n = objective.shape[0]
     bounds = []
     for j in range(n):
