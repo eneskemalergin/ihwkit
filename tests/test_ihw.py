@@ -58,6 +58,21 @@ def test_unknown_covariate_type_raises() -> None:
         adjust_ihw(_P, _X, 0.1, covariate_type="cyclic")
 
 
+def test_unknown_lp_backend_raises() -> None:
+    with pytest.raises(ValueError, match="lp_backend"):
+        adjust_ihw(_P, _X, 0.1, lp_backend="symphony")
+
+
+def test_default_lp_backend_still_runs() -> None:
+    rng = np.random.default_rng(0)
+    p = rng.uniform(size=80)
+    x = rng.uniform(size=80)
+    result = adjust_ihw(p, x, 0.1, nbins=4, nfolds=1, seed=1)
+    assert np.all(np.isfinite(result.weights))
+    assert np.all(np.isfinite(result.adj_pvalues))
+    np.testing.assert_allclose(np.mean(result.weights), 1.0, atol=1e-8)
+
+
 def test_single_bin_matches_bh() -> None:
     rng = np.random.default_rng(0)
     p = rng.uniform(size=80)

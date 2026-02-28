@@ -167,7 +167,16 @@ def _split_pvalues_by_group(pvalues: np.ndarray, groups: np.ndarray, nbins: int)
     return out
 
 
-def _solve_lp(objective: np.ndarray, a_ub: np.ndarray, b_ub: np.ndarray, lb: np.ndarray, ub: np.ndarray) -> np.ndarray:
+def _solve_lp(
+    objective: np.ndarray,
+    a_ub: np.ndarray,
+    b_ub: np.ndarray,
+    lb: np.ndarray,
+    ub: np.ndarray,
+    lp_backend: str = "highs",
+) -> np.ndarray:
+    if lp_backend != "highs":
+        raise ValueError(f"Unknown lp_backend: {lp_backend!r}")
     n = objective.shape[0]
     bounds = []
     for j in range(n):
@@ -191,6 +200,7 @@ def _ihw_convex(
     penalty: str,
     lambda_: float,
     adjustment_type: str,
+    lp_backend: str = "highs",
 ) -> np.ndarray:
     nbins = len(split_sorted_pvalues)
     if lambda_ == 0.0:
@@ -281,7 +291,7 @@ def _ihw_convex(
     ub = np.full(n_vars, 2.0, dtype=np.float64)
     if n_aux:
         ub[n_base:] = np.inf
-    sol = _solve_lp(objective, rows, rhs, lb, ub)
+    sol = _solve_lp(objective, rows, rhs, lb, ub, lp_backend)
     thresholds = np.maximum(sol[nbins : 2 * nbins], 0.0)
     return _thresholds_to_weights(thresholds, m_groups)
 
@@ -297,6 +307,7 @@ def _select_lambda(
     nsplits_internal: int,
     adjustment_type: str,
     rng: np.random.Generator,
+    lp_backend: str = "highs",
 ) -> float:
     order = np.argsort(sorted_pvalues)
     internal_p = sorted_pvalues[order]
@@ -319,6 +330,7 @@ def _select_lambda(
                 adjustment_type,
                 rng,
                 inner_folds,
+                lp_backend=lp_backend,
             )
             scores[lam_idx] += float(result["rjs"])
     scores /= float(nsplits_internal)
@@ -339,6 +351,7 @@ def _ihw_internal(
     rng: np.random.Generator,
     sorted_folds: np.ndarray | None,
     preset_fold_lambdas: np.ndarray | None = None,
+    lp_backend: str = "highs",
 ) -> dict:
     n = sorted_pvalues.shape[0]
     nbins = m_groups.shape[0]
@@ -395,6 +408,7 @@ def _ihw_internal(
                 nsplits_internal,
                 adjustment_type,
                 rng,
+                lp_backend,
             )
         ws = _ihw_convex(
             train_split,
@@ -404,6 +418,7 @@ def _ihw_internal(
             penalty,
             best_lambda,
             adjustment_type,
+            lp_backend,
         )
         sorted_weights[fold_weight_mask] = ws[sorted_groups[fold_weight_mask]]
         fold_lambdas[fold_idx] = best_lambda
@@ -440,6 +455,7 @@ def adjust_ihw(
     m_groups=None,
     rng: np.random.Generator | None = None,
     seed: int | None = 1,
+    lp_backend: str = "highs",
 ) -> IHWResult:
     p = np.asarray(pvalues, dtype=np.float64)
     x = np.asarray(covariates, dtype=np.float64)
@@ -463,6 +479,8 @@ def adjust_ihw(
         raise ValueError(f"Unknown adjustment_type: {adjustment_type!r}")
     if covariate_type not in ("ordinal", "nominal"):
         raise ValueError(f"Unknown covariate_type: {covariate_type!r}")
+    if lp_backend not in ("highs",):
+        raise ValueError(f"Unknown lp_backend: {lp_backend!r}")
     if nfolds <= 0:
         raise ValueError(f"nfolds must be positive, got {nfolds}")
     if nfolds_internal <= 0:
@@ -599,6 +617,7 @@ def adjust_ihw(
         rng,
         sorted_folds,
         preset_lams,
+        lp_backend,
     )
     inv = np.argsort(order)
     return IHWResult(
