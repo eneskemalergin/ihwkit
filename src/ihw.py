@@ -680,7 +680,7 @@ def adjust_ihw(
         raise ValueError(f"Unknown adjustment_type: {adjustment_type!r}")
     if covariate_type not in ("ordinal", "nominal"):
         raise ValueError(f"Unknown covariate_type: {covariate_type!r}")
-    if lp_backend not in ("highs",):
+    if lp_backend not in ("highs", "numpy"):
         raise ValueError(f"Unknown lp_backend: {lp_backend!r}")
     if nfolds <= 0:
         raise ValueError(f"nfolds must be positive, got {nfolds}")

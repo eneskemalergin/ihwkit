@@ -127,9 +127,17 @@ def test_numpy_lp_infeasible_raises() -> None:
         _solve_lp(c, a, b, lb, ub, "numpy")
 
 
-def test_adjust_ihw_still_rejects_numpy_backend() -> None:
-    with pytest.raises(ValueError, match="lp_backend"):
-        adjust_ihw(_P, _X, 0.1, lp_backend="numpy")
+def test_numpy_ihw_on_tiny_ordinal() -> None:
+    rng = np.random.default_rng(0)
+    p = rng.uniform(size=80)
+    x = rng.uniform(size=80)
+    result = adjust_ihw(p, x, 0.1, nbins=4, nfolds=1, seed=1, lp_backend="numpy")
+    assert np.all(np.isfinite(result.weights))
+    assert np.all(np.isfinite(result.adj_pvalues))
+    np.testing.assert_allclose(np.mean(result.weights), 1.0, atol=1e-8)
+    highs = adjust_ihw(p, x, 0.1, nbins=4, nfolds=1, seed=1, lp_backend="highs")
+    assert np.all(np.isfinite(highs.weights))
+    np.testing.assert_allclose(np.mean(highs.weights), 1.0, atol=1e-8)
 
 
 def test_single_bin_matches_bh() -> None:
