@@ -182,6 +182,26 @@ def test_highs_and_numpy_at_finite_lambda() -> None:
     assert np.isfinite(max_abs_adj)
 
 
+def test_highs_and_numpy_at_five_folds() -> None:
+    data = np.load(Path(__file__).resolve().parent / "fixtures" / "sim_n2000_seed1.npz")
+    p = np.asarray(data["p"], dtype=np.float64)
+    x = np.asarray(data["x"], dtype=np.float64)
+    highs = adjust_ihw(p, x, 0.1, nbins=4, nfolds=5, seed=1, lp_backend="highs")
+    numpy_fit = adjust_ihw(p, x, 0.1, nbins=4, nfolds=5, seed=1, lp_backend="numpy")
+    assert np.all(np.isfinite(highs.weights))
+    assert np.all(np.isfinite(numpy_fit.weights))
+    assert np.all(np.isfinite(highs.adj_pvalues))
+    assert np.all(np.isfinite(numpy_fit.adj_pvalues))
+    np.testing.assert_allclose(np.mean(highs.weights), 1.0, atol=1e-8)
+    np.testing.assert_allclose(np.mean(numpy_fit.weights), 1.0, atol=1e-8)
+    assert highs.nfolds == 5
+    assert numpy_fit.nfolds == 5
+    max_abs_weights = float(np.max(np.abs(highs.weights - numpy_fit.weights)))
+    max_abs_adj = float(np.max(np.abs(highs.adj_pvalues - numpy_fit.adj_pvalues)))
+    assert np.isfinite(max_abs_weights)
+    assert np.isfinite(max_abs_adj)
+
+
 def test_single_bin_matches_bh() -> None:
     rng = np.random.default_rng(0)
     p = rng.uniform(size=80)
