@@ -160,12 +160,16 @@ def test_highs_and_numpy_on_sim_fixture() -> None:
     assert np.isfinite(max_abs_adj)
 
 
-def test_highs_and_numpy_on_sim_fixture() -> None:
+def test_highs_and_numpy_at_finite_lambda() -> None:
     data = np.load(Path(__file__).resolve().parent / "fixtures" / "sim_n2000_seed1.npz")
     p = np.asarray(data["p"], dtype=np.float64)
     x = np.asarray(data["x"], dtype=np.float64)
-    highs = adjust_ihw(p, x, 0.1, nbins=4, nfolds=1, seed=1, lp_backend="highs")
-    numpy_fit = adjust_ihw(p, x, 0.1, nbins=4, nfolds=1, seed=1, lp_backend="numpy")
+    highs = adjust_ihw(
+        p, x, 0.1, nbins=4, nfolds=1, seed=1, lambdas=[1.0], lp_backend="highs"
+    )
+    numpy_fit = adjust_ihw(
+        p, x, 0.1, nbins=4, nfolds=1, seed=1, lambdas=[1.0], lp_backend="numpy"
+    )
     assert np.all(np.isfinite(highs.weights))
     assert np.all(np.isfinite(numpy_fit.weights))
     assert np.all(np.isfinite(highs.adj_pvalues))
