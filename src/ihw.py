@@ -172,137 +172,133 @@ _LP_EPS = 1e-9
 _LP_MAX_ITER = 250000
 
 
-def _revised_simplex(
-    c: np.ndarray,
-    a: np.ndarray,
-    b: np.ndarray,
+def _simplex_tableau(
+    tableau: np.ndarray,
     basis: list[int],
     eps: float,
     max_iter: int,
 ) -> tuple[np.ndarray, list[int]]:
-    m, n = a.shape
+    m = tableau.shape[0] - 1
+    n_tot = tableau.shape[1] - 1
     basis = [int(i) for i in basis]
-    basic = set(basis)
     for _ in range(max_iter):
-        bmat = a[:, basis]
-        try:
-            xb = np.linalg.solve(bmat, b)
-            pi = np.linalg.solve(bmat.T, c[basis])
-        except np.linalg.LinAlgError as exc:
-            raise RuntimeError("weight LP did not solve: singular basis") from exc
-        reduced = c - a.T @ pi
-        enter = -1
-        for j in range(n):
-            if j in basic:
-                continue
-            if reduced[j] < -eps:
-                enter = j
-                break
-        if enter < 0:
-            x = np.zeros(n, dtype=np.float64)
-            x[basis] = np.maximum(xb, 0.0)
-            return x, basis
-        try:
-            direction = np.linalg.solve(bmat, a[:, enter])
-        except np.linalg.LinAlgError as exc:
-            raise RuntimeError("weight LP did not solve: singular basis") from exc
-        leave = -1
-        best_ratio = np.inf
-        best_var = n + 1
-        for i in range(m):
-            if direction[i] <= eps:
-                continue
-            ratio = xb[i] / direction[i]
-            if ratio < -eps:
-                continue
-            var = basis[i]
-            if ratio < best_ratio - eps or (abs(ratio - best_ratio) <= eps and var < best_var):
-                best_ratio = ratio
-                best_var = var
-                leave = i
-        if leave < 0:
+        reduced = tableau[-1, :n_tot]
+        enter_cands = np.flatnonzero(reduced < -eps)
+        if enter_cands.size == 0:
+            return tableau, basis
+        enter = int(enter_cands[0])
+        col = tableau[:m, enter]
+        pos = col > eps
+        if not np.any(pos):
             raise RuntimeError("weight LP did not solve: unbounded")
-        basic.remove(basis[leave])
+        rhs = tableau[:m, -1]
+        ratios = np.full(m, np.inf, dtype=np.float64)
+        ratios[pos] = rhs[pos] / col[pos]
+        min_ratio = float(np.min(ratios))
+        tied = pos & (np.abs(ratios - min_ratio) <= eps)
+        leave = int(min((i for i in range(m) if tied[i]), key=lambda i: basis[i]))
+        pivot = tableau[leave, enter]
+        tableau[leave] /= pivot
+        factors = tableau[:, enter].copy()
+        factors[leave] = 0.0
+        tableau -= factors[:, None] * tableau[leave]
         basis[leave] = enter
-        basic.add(enter)
     raise RuntimeError("weight LP did not solve: iteration limit")
 
 
-def _clear_artificial_basis(
-    a: np.ndarray,
-    basis: list[int],
-    n_struct: int,
-    eps: float,
-) -> list[int]:
-    m = a.shape[0]
-    a_aug = np.hstack([a, np.eye(m)])
-    for i in range(m):
-        if basis[i] < n_struct:
+def _clear_obj_basic(tableau: np.ndarray, basis: list[int], eps: float) -> None:
+    for i, bi in enumerate(basis):
+        if bi >= tableau.shape[1] - 1:
             continue
-        bmat = a_aug[:, basis]
-        try:
-            binva = np.linalg.solve(bmat, a)
-        except np.linalg.LinAlgError:
-            continue
-        enter = -1
-        for j in range(n_struct):
-            if j in basis:
-                continue
-            if abs(binva[i, j]) > eps:
-                enter = j
-                break
-        if enter >= 0:
-            basis[i] = enter
-    return basis
+        coef = tableau[-1, bi]
+        if abs(coef) > eps:
+            tableau[-1] -= coef * tableau[i]
 
 
-def _two_phase_simplex(c: np.ndarray, a: np.ndarray, b: np.ndarray) -> np.ndarray:
-    a = np.array(a, dtype=np.float64, copy=True)
-    b = np.array(b, dtype=np.float64, copy=True)
-    c = np.array(c, dtype=np.float64, copy=True)
-    if a.ndim != 2:
-        raise RuntimeError("weight LP did not solve: bad constraint matrix")
-    m, n = a.shape
-    if m == 0:
-        if np.any(c < -_LP_EPS):
-            raise RuntimeError("weight LP did not solve: unbounded")
-        return np.zeros(n, dtype=np.float64)
-    for i in range(m):
-        if b[i] < 0.0:
-            a[i] *= -1.0
-            b[i] *= -1.0
-    row_scale = np.max(np.abs(a), axis=1)
+def _max_tableau(c: np.ndarray, g: np.ndarray, h: np.ndarray) -> np.ndarray:
+    n = c.shape[0]
+    m = g.shape[0]
+    row_scale = np.max(np.abs(g), axis=1)
     zero_row = row_scale <= _LP_EPS
-    if np.any(zero_row & (np.abs(b) > _LP_EPS)):
+    if np.any(zero_row & (np.abs(h) > _LP_EPS)):
         raise RuntimeError("weight LP did not solve: infeasible")
     keep = ~zero_row
-    a = a[keep]
-    b = b[keep]
-    if a.shape[0] == 0:
-        if np.any(c < -_LP_EPS):
+    g = g[keep]
+    h = h[keep]
+    if g.shape[0] == 0:
+        if np.any(c > _LP_EPS):
             raise RuntimeError("weight LP did not solve: unbounded")
         return np.zeros(n, dtype=np.float64)
-    row_scale = np.max(np.abs(a), axis=1)
-    a = a / row_scale[:, None]
-    b = b / row_scale
-    m = a.shape[0]
-    a1 = np.hstack([a, np.eye(m)])
-    c1 = np.concatenate([np.zeros(n, dtype=np.float64), np.ones(m, dtype=np.float64)])
+    row_scale = np.max(np.abs(g), axis=1)
+    g = g / row_scale[:, None]
+    h = h / row_scale
+    m = g.shape[0]
+    tableau = np.zeros((m + 1, n + m + 1), dtype=np.float64)
+    tableau[:m, :n] = g
+    tableau[:m, n : n + m] = np.eye(m)
+    tableau[:m, -1] = h
+    neg = tableau[:m, -1] < 0.0
+    tableau[:m][neg] *= -1.0
+    slack_diag = np.diag(tableau[:m, n : n + m])
+    need_art = slack_diag < 0.5
     basis = list(range(n, n + m))
-    x1, basis = _revised_simplex(c1, a1, b, basis, _LP_EPS, _LP_MAX_ITER)
-    if float(np.dot(c1, x1)) > 1e3 * _LP_EPS:
-        raise RuntimeError("weight LP did not solve: infeasible")
-    basis = _clear_artificial_basis(a, basis, n, _LP_EPS)
-    keep_idx = [i for i in range(m) if basis[i] < n]
-    if len(keep_idx) != m:
-        a = a[keep_idx]
-        b = b[keep_idx]
-        basis = [basis[i] for i in keep_idx]
-    if a.shape[0] == 0:
-        x = np.zeros(n, dtype=np.float64)
-    else:
-        x, _ = _revised_simplex(c, a, b, basis, _LP_EPS, _LP_MAX_ITER)
-    return x[:n]
+    n_struct = n + m
+    if np.any(need_art):
+        art_rows = np.flatnonzero(need_art)
+        n_art = int(art_rows.shape[0])
+        art = np.zeros((m + 1, n_art), dtype=np.float64)
+        art[art_rows, np.arange(n_art)] = 1.0
+        tableau = np.hstack([tableau[:, :-1], art, tableau[:, -1:]])
+        tableau[-1, :] = 0.0
+        tableau[-1] -= tableau[art_rows].sum(axis=0)
+        k = 0
+        basis = []
+        for i in range(m):
+            if need_art[i]:
+                basis.append(n_struct + k)
+                k += 1
+            else:
+                basis.append(n + i)
+        tableau, basis = _simplex_tableau(tableau, basis, _LP_EPS, _LP_MAX_ITER)
+        art_sum = 0.0
+        for i, bi in enumerate(basis):
+            if bi >= n_struct:
+                art_sum += float(tableau[i, -1])
+        if art_sum > 1e3 * _LP_EPS:
+            raise RuntimeError("weight LP did not solve: infeasible")
+        for i, bi in enumerate(basis):
+            if bi < n_struct:
+                continue
+            col = tableau[i, :n_struct]
+            enter_cands = np.flatnonzero(np.abs(col) > _LP_EPS)
+            if enter_cands.size == 0:
+                continue
+            enter = int(enter_cands[0])
+            pivot = tableau[i, enter]
+            tableau[i] /= pivot
+            factors = tableau[:, enter].copy()
+            factors[i] = 0.0
+            tableau -= factors[:, None] * tableau[i]
+            basis[i] = enter
+        tableau = np.hstack([tableau[:, :n_struct], tableau[:, -1:]])
+        keep_rows = [i for i in range(m) if basis[i] < n_struct]
+        if len(keep_rows) != m:
+            tableau = np.vstack([tableau[keep_rows], tableau[-1:]])
+            basis = [basis[i] for i in keep_rows]
+            m = len(keep_rows)
+        if m == 0:
+            if np.any(c > _LP_EPS):
+                raise RuntimeError("weight LP did not solve: unbounded")
+            return np.zeros(n, dtype=np.float64)
+    tableau[-1, :] = 0.0
+    tableau[-1, :n] = -c
+    _clear_obj_basic(tableau, basis, _LP_EPS)
+    tableau, basis = _simplex_tableau(tableau, basis, _LP_EPS, _LP_MAX_ITER)
+    y = np.zeros(n, dtype=np.float64)
+    for i, bi in enumerate(basis):
+        if bi < n:
+            y[bi] = tableau[i, -1]
+    return y
 
 
 def _solve_lp_numpy(
@@ -327,7 +323,8 @@ def _solve_lp_numpy(
     if np.any(~np.isfinite(lb)):
         raise RuntimeError("weight LP did not solve: infinite lower bound")
     b_shift = b_ub - a_ub @ lb
-    a_work = a_ub.copy()
+    g = a_ub
+    h = b_shift
     finite_ub = np.isfinite(ub)
     if np.any(finite_ub):
         ub_idx = np.flatnonzero(finite_ub)
@@ -336,10 +333,9 @@ def _solve_lp_numpy(
             raise RuntimeError("weight LP did not solve: empty bounds")
         ub_rows = np.zeros((ub_idx.shape[0], n), dtype=np.float64)
         ub_rows[np.arange(ub_idx.shape[0]), ub_idx] = 1.0
-        a_work = np.vstack([a_work, ub_rows])
-        b_shift = np.concatenate([b_shift, np.maximum(cap, 0.0)])
-    m = a_work.shape[0]
-    if m == 0:
+        g = np.vstack([g, ub_rows])
+        h = np.concatenate([h, np.maximum(cap, 0.0)])
+    if g.shape[0] == 0:
         y = np.zeros(n, dtype=np.float64)
         for j in range(n):
             if c[j] > _LP_EPS:
@@ -349,10 +345,7 @@ def _solve_lp_numpy(
             else:
                 y[j] = 0.0
         return y + lb
-    a_eq = np.hstack([a_work, np.eye(m)])
-    c_min = np.concatenate([-c, np.zeros(m, dtype=np.float64)])
-    z = _two_phase_simplex(c_min, a_eq, b_shift)
-    y = z[:n]
+    y = _max_tableau(c, g, h)
     y = np.maximum(y, 0.0)
     y[y < 1e-10] = 0.0
     x = y + lb
