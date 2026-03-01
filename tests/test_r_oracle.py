@@ -49,3 +49,47 @@ def test_python_replay_matches_five_fold_r_oracle() -> None:
     ihw_rej = int(np.sum(result.adj_pvalues <= 0.1))
     assert ihw_rej == int(data["rejections"])
     np.testing.assert_array_equal(result.folds, folds)
+
+
+def test_numpy_is_finite_on_n1_oracle() -> None:
+    data = np.load(ORACLE)
+    p = np.asarray(data["p"], dtype=np.float64)
+    x = np.asarray(data["x"], dtype=np.float64)
+    groups = np.asarray(data["groups"], dtype=np.intp)
+    result = adjust_ihw(
+        p, x, 0.1, nbins=4, nfolds=1, groups=groups, seed=1, lp_backend="numpy"
+    )
+    assert np.all(np.isfinite(result.weights))
+    assert np.all(np.isfinite(result.adj_pvalues))
+    np.testing.assert_allclose(np.mean(result.weights), 1.0, atol=1e-8)
+    max_abs_adj = float(np.max(np.abs(result.adj_pvalues - data["adj_pvalues"])))
+    max_abs_w = float(np.max(np.abs(result.weights - data["weights"])))
+    assert np.isfinite(max_abs_adj)
+    assert np.isfinite(max_abs_w)
+
+
+def test_numpy_is_finite_on_n5_oracle() -> None:
+    data = np.load(ORACLE_N5)
+    p = np.asarray(data["p"], dtype=np.float64)
+    x = np.asarray(data["x"], dtype=np.float64)
+    groups = np.asarray(data["groups"], dtype=np.intp)
+    folds = np.asarray(data["folds"], dtype=np.intp)
+    result = adjust_ihw(
+        p,
+        x,
+        0.1,
+        nbins=4,
+        nfolds=5,
+        groups=groups,
+        folds=folds,
+        seed=1,
+        lp_backend="numpy",
+    )
+    assert np.all(np.isfinite(result.weights))
+    assert np.all(np.isfinite(result.adj_pvalues))
+    np.testing.assert_allclose(np.mean(result.weights), 1.0, atol=1e-8)
+    np.testing.assert_array_equal(result.folds, folds)
+    max_abs_adj = float(np.max(np.abs(result.adj_pvalues - data["adj_pvalues"])))
+    max_abs_w = float(np.max(np.abs(result.weights - data["weights"])))
+    assert np.isfinite(max_abs_adj)
+    assert np.isfinite(max_abs_w)
