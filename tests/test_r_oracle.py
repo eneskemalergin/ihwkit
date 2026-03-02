@@ -68,6 +68,21 @@ def test_numpy_is_finite_on_n1_oracle() -> None:
     assert np.isfinite(max_abs_w)
 
 
+def test_numpy_tracks_highs_on_n1_oracle() -> None:
+    data = np.load(ORACLE)
+    p = np.asarray(data["p"], dtype=np.float64)
+    x = np.asarray(data["x"], dtype=np.float64)
+    groups = np.asarray(data["groups"], dtype=np.intp)
+    highs = adjust_ihw(
+        p, x, 0.1, nbins=4, nfolds=1, groups=groups, seed=1, lp_backend="highs"
+    )
+    numpy_fit = adjust_ihw(
+        p, x, 0.1, nbins=4, nfolds=1, groups=groups, seed=1, lp_backend="numpy"
+    )
+    np.testing.assert_allclose(numpy_fit.adj_pvalues, highs.adj_pvalues, atol=1e-8, rtol=1e-6)
+    np.testing.assert_allclose(numpy_fit.weights, highs.weights, atol=1e-8, rtol=1e-6)
+
+
 def test_numpy_is_finite_on_n5_oracle() -> None:
     data = np.load(ORACLE_N5)
     p = np.asarray(data["p"], dtype=np.float64)
