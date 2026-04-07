@@ -33,3 +33,5 @@ Pass `groups=`, `folds=`, `fold_lambdas=`, and `m_groups=` to freeze the partiti
 Default here is λ=∞ and nfolds=5. R IHW defaults to `lambdas="auto"`. The stored comparable file is `tests/fixtures/r_inf_n1.npz` (λ=∞, nfolds=1, frozen `groups=`). Unfrozen `seed` is not claimed to match R.
 
 The default weight LP is HiGHS (`lp_backend="highs"`). `lp_backend="numpy"` is an experimental dense tableau simplex and may differ from R. SciPy is still required for the default path. `scripts/compare_lp_backends.py` runs both backends on `tests/fixtures/sim_n2000_seed1.npz` (nfolds=1 and 5, λ=∞): median of 5 wall times, rejection counts, max-abs of weights and adj-p. Replay of the stored R oracles stays on HiGHS.
+
+Larger Python benches: `scripts/make_bench_sim.py` writes an n=8000 informative sim to `tmp/bench_sim.npz` (gitignored). `scripts/bench_ihw.py` loads that file if present, otherwise the n=2000 fixture. It prints median of 5 wall times for HiGHS and numpy at nfolds=1 and 5, max RSS (`resource.getrusage`, kilobytes on Linux), a uniform-null control with an independent covariate, and `tmp/bench_last.csv`. Default fit remains λ=∞ HiGHS.
