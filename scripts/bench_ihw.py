@@ -22,18 +22,20 @@ n_reps = 5
 rss_unit = "kilobytes"
 
 
-def run(backend: str, nfolds: int):
+def run(backend: str, nfolds: int, pvalues=None, covariates=None):
+    pv = p if pvalues is None else pvalues
+    xv = x if covariates is None else covariates
     return adjust_ihw(
-        p, x, alpha, nbins=4, nfolds=nfolds, seed=1, lp_backend=backend
+        pv, xv, alpha, nbins=4, nfolds=nfolds, seed=1, lp_backend=backend
     )
 
 
-def median_wall(backend: str, nfolds: int):
+def median_wall(backend: str, nfolds: int, pvalues=None, covariates=None):
     times = []
     last = None
     for _ in range(n_reps):
         t0 = time.perf_counter()
-        last = run(backend, nfolds)
+        last = run(backend, nfolds, pvalues, covariates)
         times.append(time.perf_counter() - t0)
     times.sort()
     return float(times[n_reps // 2]), last
@@ -76,3 +78,15 @@ with csv_path.open("w", newline="") as fh:
     writer.writeheader()
     writer.writerows(rows)
 print(f"wrote {csv_path.relative_to(ROOT)}")
+
+rng = np.random.default_rng(21)
+p_null = rng.uniform(size=p.shape[0])
+x_null = rng.uniform(size=p.shape[0])
+print(f"uniform_null n={p_null.shape[0]} independent_cov nbins=4 lambda=inf reps={n_reps}")
+for nfolds in (1, 5):
+    run("highs", nfolds, p_null, x_null)
+    run("numpy", nfolds, p_null, x_null)
+    for backend in ("highs", "numpy"):
+        med, fit = median_wall(backend, nfolds, p_null, x_null)
+        rej = int(np.sum(fit.adj_pvalues <= alpha))
+        print(f"uniform_null nfolds={nfolds} {backend} median_s {med:.6f} rejections {rej}")
