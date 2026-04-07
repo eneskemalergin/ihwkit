@@ -202,6 +202,20 @@ def test_highs_and_numpy_at_five_folds() -> None:
     assert np.isfinite(max_abs_adj)
 
 
+def test_both_lp_backends_smoke_on_medium_n() -> None:
+    rng = np.random.default_rng(4)
+    p = rng.uniform(size=400)
+    x = rng.uniform(size=400)
+    highs = adjust_ihw(p, x, 0.1, nbins=4, nfolds=1, seed=1, lp_backend="highs")
+    numpy_fit = adjust_ihw(p, x, 0.1, nbins=4, nfolds=1, seed=1, lp_backend="numpy")
+    assert np.all(np.isfinite(highs.weights))
+    assert np.all(np.isfinite(numpy_fit.weights))
+    assert np.all(np.isfinite(highs.adj_pvalues))
+    assert np.all(np.isfinite(numpy_fit.adj_pvalues))
+    np.testing.assert_allclose(np.mean(highs.weights), 1.0, atol=1e-8)
+    np.testing.assert_allclose(np.mean(numpy_fit.weights), 1.0, atol=1e-8)
+
+
 def test_single_bin_matches_bh() -> None:
     rng = np.random.default_rng(0)
     p = rng.uniform(size=80)
