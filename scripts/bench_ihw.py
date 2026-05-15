@@ -23,20 +23,27 @@ n_reps = 5
 rss_unit = "kilobytes"
 
 
-def run(backend: str, nfolds: int, pvalues=None, covariates=None):
+def run(backend: str, nfolds: int, pvalues=None, covariates=None, groups=None, folds=None):
     pv = p if pvalues is None else pvalues
     xv = x if covariates is None else covariates
+    kw = {}
+    if groups is not None:
+        kw["groups"] = groups
+    if folds is not None:
+        kw["folds"] = folds
     return adjust_ihw(
-        pv, xv, alpha, nbins=4, nfolds=nfolds, seed=1, lp_backend=backend
+        pv, xv, alpha, nbins=4, nfolds=nfolds, seed=1, lp_backend=backend, **kw
     )
 
 
-def median_wall(backend: str, nfolds: int, pvalues=None, covariates=None):
+def median_wall(
+    backend: str, nfolds: int, pvalues=None, covariates=None, groups=None, folds=None
+):
     times = []
     last = None
     for _ in range(n_reps):
         t0 = time.perf_counter()
-        last = run(backend, nfolds, pvalues, covariates)
+        last = run(backend, nfolds, pvalues, covariates, groups, folds)
         times.append(time.perf_counter() - t0)
     times.sort()
     return float(times[n_reps // 2]), last
@@ -144,3 +151,24 @@ for nfolds in (1, 5):
         med, fit = median_wall(backend, nfolds, p_null, x_null)
         rej = int(np.sum(fit.adj_pvalues <= alpha))
         print(f"uniform_null nfolds={nfolds} {backend} median_s {med:.6f} rejections {rej}")
+
+n1_path = ROOT / "tests" / "fixtures" / "r_inf_n1.npz"
+n1 = np.load(n1_path)
+p1 = np.asarray(n1["p"], dtype=np.float64)
+x1 = np.asarray(n1["x"], dtype=np.float64)
+g1 = np.asarray(n1["groups"], dtype=np.intp)
+adj1 = np.asarray(n1["adj_pvalues"], dtype=np.float64)
+w1 = np.asarray(n1["weights"], dtype=np.float64)
+print(f"oracle n1 n={p1.shape[0]} frozen_groups nbins=4 lambda=inf reps={n_reps}")
+run("highs", 1, p1, x1, g1)
+run("numpy", 1, p1, x1, g1)
+for backend in ("highs", "numpy"):
+    med, fit = median_wall(backend, 1, p1, x1, g1)
+    rej = int(np.sum(fit.adj_pvalues <= alpha))
+    max_adj = float(np.max(np.abs(fit.adj_pvalues - adj1)))
+    max_w = float(np.max(np.abs(fit.weights - w1)))
+    tag = "" if backend == "highs" else " informational"
+    print(
+        f"oracle n1 {backend} median_s {med:.6f} rejections {rej} "
+        f"max_abs_adj_vs_r {max_adj:.6e} max_abs_weights_vs_r {max_w:.6e}{tag}"
+    )
