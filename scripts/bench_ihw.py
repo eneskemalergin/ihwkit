@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import csv
 import resource
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -45,6 +46,57 @@ def rss_max():
     return int(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
 
 
+def run_r_bench():
+    script = ROOT / "scripts" / "r_ihw_bench.R"
+    try:
+        proc = subprocess.run(
+            ["Rscript", "--vanilla", str(script)],
+            cwd=str(ROOT),
+            capture_output=True,
+            text=True,
+            timeout=180,
+        )
+    except FileNotFoundError:
+        print("r skip Rscript not found")
+        return []
+    except subprocess.TimeoutExpired:
+        print("r skip Rscript timed out")
+        return []
+    parsed = []
+    printed = False
+    for line in proc.stdout.splitlines():
+        line = line.strip()
+        if not line.startswith("r "):
+            continue
+        print(line)
+        printed = True
+        if line.startswith("r skip"):
+            continue
+        toks = line.split()
+        if len(toks) < 10 or toks[1] != "sim":
+            continue
+        nfolds = int(toks[4].split("=", 1)[1])
+        median_s = toks[6]
+        rejections = int(toks[8])
+        parsed.append(
+            {
+                "nfolds": nfolds,
+                "backend": "r",
+                "median_s": median_s,
+                "rejections": rejections,
+                "rss_max": "",
+                "rss_unit": "",
+            }
+        )
+    if printed:
+        return parsed
+    if proc.returncode != 0:
+        print("r skip Rscript failed")
+        return []
+    print("r skip no r timing line")
+    return []
+
+
 src = path.relative_to(ROOT)
 print(f"sim {src} n={p.shape[0]} nbins=4 lambda=inf reps={n_reps} rss_unit={rss_unit}")
 rows = []
@@ -68,6 +120,8 @@ for nfolds in (1, 5):
                 "rss_unit": rss_unit,
             }
         )
+
+rows.extend(run_r_bench())
 
 csv_path = ROOT / "tmp" / "bench_last.csv"
 csv_path.parent.mkdir(parents=True, exist_ok=True)
