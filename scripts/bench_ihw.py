@@ -172,3 +172,25 @@ for backend in ("highs", "numpy"):
         f"oracle n1 {backend} median_s {med:.6f} rejections {rej} "
         f"max_abs_adj_vs_r {max_adj:.6e} max_abs_weights_vs_r {max_w:.6e}{tag}"
     )
+
+n5_path = ROOT / "tests" / "fixtures" / "r_inf_n5.npz"
+n5 = np.load(n5_path)
+p5 = np.asarray(n5["p"], dtype=np.float64)
+x5 = np.asarray(n5["x"], dtype=np.float64)
+g5 = np.asarray(n5["groups"], dtype=np.intp)
+f5 = np.asarray(n5["folds"], dtype=np.intp)
+adj5 = np.asarray(n5["adj_pvalues"], dtype=np.float64)
+w5 = np.asarray(n5["weights"], dtype=np.float64)
+print(f"oracle n5 n={p5.shape[0]} frozen_groups_folds nbins=4 lambda=inf reps={n_reps}")
+run("highs", 5, p5, x5, g5, f5)
+run("numpy", 5, p5, x5, g5, f5)
+for backend in ("highs", "numpy"):
+    med, fit = median_wall(backend, 5, p5, x5, g5, f5)
+    rej = int(np.sum(fit.adj_pvalues <= alpha))
+    max_adj = float(np.max(np.abs(fit.adj_pvalues - adj5)))
+    max_w = float(np.max(np.abs(fit.weights - w5)))
+    tag = "" if backend == "highs" else " informational"
+    print(
+        f"oracle n5 {backend} median_s {med:.6f} rejections {rej} "
+        f"max_abs_adj_vs_r {max_adj:.6e} max_abs_weights_vs_r {max_w:.6e}{tag}"
+    )
