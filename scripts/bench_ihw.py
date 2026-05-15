@@ -225,3 +225,26 @@ for nfolds in (1, 5):
     print(
         f"mixture n=2000 nfolds={nfolds} max_abs_adj_highs_numpy {max_adj:.6e}"
     )
+
+if TMP.is_file():
+    p_mix8, x_mix8 = mixture_sim(8000)
+    print(f"mixture n=8000 informative_pi nbins=4 lambda=inf reps={n_reps}")
+    for nfolds in (1, 5):
+        run("highs", nfolds, p_mix8, x_mix8)
+        run("numpy", nfolds, p_mix8, x_mix8)
+        fits = {}
+        for backend in ("highs", "numpy"):
+            med, fit = median_wall(backend, nfolds, p_mix8, x_mix8)
+            fits[backend] = fit
+            rej = int(np.sum(fit.adj_pvalues <= alpha))
+            print(
+                f"mixture n=8000 nfolds={nfolds} {backend} median_s {med:.6f} rejections {rej}"
+            )
+        max_adj = float(
+            np.max(np.abs(fits["highs"].adj_pvalues - fits["numpy"].adj_pvalues))
+        )
+        print(
+            f"mixture n=8000 nfolds={nfolds} max_abs_adj_highs_numpy {max_adj:.6e}"
+        )
+else:
+    print("mixture n=8000 skip tmp/bench_sim.npz is not present")
