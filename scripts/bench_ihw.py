@@ -7,6 +7,7 @@ import time
 from pathlib import Path
 
 import numpy as np
+from scipy.stats import norm
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
@@ -51,6 +52,16 @@ def median_wall(
 
 def rss_max():
     return int(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
+
+
+def mixture_sim(n, seed=4):
+    rng = np.random.default_rng(seed)
+    cov = rng.uniform(0.0, 1.0, size=n)
+    pi_alt = 0.02 + 0.35 * cov
+    is_alt = rng.uniform(size=n) < pi_alt
+    z = rng.normal(loc=np.where(is_alt, 1.5 + 1.5 * cov, 0.0))
+    pmix = 1.0 - norm.cdf(z)
+    return pmix, cov
 
 
 def run_r_bench():
@@ -193,4 +204,24 @@ for backend in ("highs", "numpy"):
     print(
         f"oracle n5 {backend} median_s {med:.6f} rejections {rej} "
         f"max_abs_adj_vs_r {max_adj:.6e} max_abs_weights_vs_r {max_w:.6e}{tag}"
+    )
+
+p_mix, x_mix = mixture_sim(2000)
+print(f"mixture n=2000 informative_pi nbins=4 lambda=inf reps={n_reps}")
+for nfolds in (1, 5):
+    run("highs", nfolds, p_mix, x_mix)
+    run("numpy", nfolds, p_mix, x_mix)
+    fits = {}
+    for backend in ("highs", "numpy"):
+        med, fit = median_wall(backend, nfolds, p_mix, x_mix)
+        fits[backend] = fit
+        rej = int(np.sum(fit.adj_pvalues <= alpha))
+        print(
+            f"mixture n=2000 nfolds={nfolds} {backend} median_s {med:.6f} rejections {rej}"
+        )
+    max_adj = float(
+        np.max(np.abs(fits["highs"].adj_pvalues - fits["numpy"].adj_pvalues))
+    )
+    print(
+        f"mixture n=2000 nfolds={nfolds} max_abs_adj_highs_numpy {max_adj:.6e}"
     )
