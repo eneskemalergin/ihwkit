@@ -24,13 +24,37 @@ class IHWResult:
     m_groups: np.ndarray
 
 
-def _iso_mean(y: np.ndarray, w: np.ndarray) -> np.ndarray:
+_iso_mean_jit = None
+
+
+def _numba_importable() -> bool:
+    try:
+        import importlib.util
+
+        return importlib.util.find_spec("numba") is not None
+    except (ImportError, ValueError):
+        return False
+
+
+def _want_numba(use_numba: bool | None) -> bool:
+    if use_numba is False:
+        return False
+    return _numba_importable()
+
+
+def _iso_mean_loops(y: np.ndarray, w: np.ndarray) -> np.ndarray:
     n = y.shape[0]
     if n == 1:
-        return y.copy()
-    values = y.astype(np.float64, copy=True)
-    weights = w.astype(np.float64, copy=True)
-    counts = np.ones(n, dtype=np.int64)
+        out0 = np.empty(1, dtype=np.float64)
+        out0[0] = y[0]
+        return out0
+    values = np.empty(n, dtype=np.float64)
+    weights = np.empty(n, dtype=np.float64)
+    counts = np.empty(n, dtype=np.int64)
+    for i0 in range(n):
+        values[i0] = y[i0]
+        weights[i0] = w[i0]
+        counts[i0] = 1
     size = n
     i = 0
     while i < size - 1:
@@ -41,21 +65,40 @@ def _iso_mean(y: np.ndarray, w: np.ndarray) -> np.ndarray:
         values[i] = (weights[i] * values[i] + weights[i + 1] * values[i + 1]) / tw
         weights[i] = tw
         counts[i] += counts[i + 1]
-        values[i + 1 : size - 1] = values[i + 2 : size]
-        weights[i + 1 : size - 1] = weights[i + 2 : size]
-        counts[i + 1 : size - 1] = counts[i + 2 : size]
+        for j in range(i + 1, size - 1):
+            values[j] = values[j + 1]
+            weights[j] = weights[j + 1]
+            counts[j] = counts[j + 1]
         size -= 1
         if i > 0:
             i -= 1
     out = np.empty(n, dtype=np.float64)
     pos = 0
     for k in range(size):
-        out[pos : pos + int(counts[k])] = values[k]
-        pos += int(counts[k])
+        ck = counts[k]
+        vk = values[k]
+        for t in range(ck):
+            out[pos + t] = vk
+        pos += ck
     return out
 
 
-def _grenander(sorted_pvalues: np.ndarray, m_total: int) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+def _iso_mean(y: np.ndarray, w: np.ndarray, use_numba: bool | None = None) -> np.ndarray:
+    y64 = np.asarray(y, dtype=np.float64)
+    w64 = np.asarray(w, dtype=np.float64)
+    if _want_numba(use_numba):
+        global _iso_mean_jit
+        if _iso_mean_jit is None:
+            from numba import njit
+
+            _iso_mean_jit = njit(_iso_mean_loops, cache=True)
+        return _iso_mean_jit(y64, w64)
+    return _iso_mean_loops(y64, w64)
+
+
+def _grenander(
+    sorted_pvalues: np.ndarray, m_total: int, use_numba: bool | None = None
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     if sorted_pvalues.shape[0] == 0:
         return np.array([0.0]), np.array([0.0]), np.array([1.0])
     unique_p, counts = np.unique(sorted_pvalues, return_counts=True)
@@ -71,7 +114,7 @@ def _grenander(sorted_pvalues: np.ndarray, m_total: int) -> tuple[np.ndarray, np
     rawslope = dy / dx
     rawslope = np.where(np.isposinf(rawslope), np.finfo(np.float64).max, rawslope)
     rawslope = np.where(np.isneginf(rawslope), -np.finfo(np.float64).max, rawslope)
-    slope = -_iso_mean(-rawslope, dx)
+    slope = -_iso_mean(-rawslope, dx, use_numba)
     dup = np.concatenate(([True], slope[1:] != slope[:-1]))
     x_knots = unique_p[np.concatenate([dup, [True]])]
     dx_knots = np.diff(x_knots)
@@ -401,6 +444,7 @@ def _ihw_convex(
     lambda_: float,
     adjustment_type: str,
     lp_backend: str = "highs",
+    use_numba: bool | None = None,
 ) -> np.ndarray:
     nbins = len(split_sorted_pvalues)
     if lambda_ == 0.0:
@@ -408,7 +452,8 @@ def _ihw_convex(
     clipped = [np.where(pv > 1e-20, pv, 0.0).astype(np.float64) for pv in split_sorted_pvalues]
     m = int(np.sum(m_groups))
     grenander_list = [
-        _grenander(pv, int(mg)) for pv, mg in zip(clipped, m_groups_grenander, strict=True)
+        _grenander(pv, int(mg), use_numba)
+        for pv, mg in zip(clipped, m_groups_grenander, strict=True)
     ]
     n_constraints = sum(len(g[2]) for g in grenander_list)
     rows = np.zeros((n_constraints, 2 * nbins), dtype=np.float64)
@@ -508,6 +553,7 @@ def _select_lambda(
     adjustment_type: str,
     rng: np.random.Generator,
     lp_backend: str = "highs",
+    use_numba: bool | None = None,
 ) -> float:
     order = np.argsort(sorted_pvalues)
     internal_p = sorted_pvalues[order]
@@ -531,6 +577,7 @@ def _select_lambda(
                 rng,
                 inner_folds,
                 lp_backend=lp_backend,
+                use_numba=use_numba,
             )
             scores[lam_idx] += float(result["rjs"])
     scores /= float(nsplits_internal)
@@ -552,6 +599,7 @@ def _ihw_internal(
     sorted_folds: np.ndarray | None,
     preset_fold_lambdas: np.ndarray | None = None,
     lp_backend: str = "highs",
+    use_numba: bool | None = None,
 ) -> dict:
     n = sorted_pvalues.shape[0]
     nbins = m_groups.shape[0]
@@ -609,6 +657,7 @@ def _ihw_internal(
                 adjustment_type,
                 rng,
                 lp_backend,
+                use_numba,
             )
         ws = _ihw_convex(
             train_split,
@@ -619,6 +668,7 @@ def _ihw_internal(
             best_lambda,
             adjustment_type,
             lp_backend,
+            use_numba,
         )
         sorted_weights[fold_weight_mask] = ws[sorted_groups[fold_weight_mask]]
         fold_lambdas[fold_idx] = best_lambda
@@ -656,6 +706,7 @@ def adjust_ihw(
     rng: np.random.Generator | None = None,
     seed: int | None = 1,
     lp_backend: str = "highs",
+    use_numba: bool | None = None,
 ) -> IHWResult:
     p = np.asarray(pvalues, dtype=np.float64)
     x = np.asarray(covariates, dtype=np.float64)
@@ -818,6 +869,7 @@ def adjust_ihw(
         sorted_folds,
         preset_lams,
         lp_backend,
+        use_numba,
     )
     inv = np.argsort(order)
     return IHWResult(
