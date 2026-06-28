@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 from scipy.stats import norm
 
-from ihw import _p_adjust, _solve_lp, _thresholds_to_weights, adjust_ihw
+from ihw import _numba_importable, _p_adjust, _solve_lp, _thresholds_to_weights, adjust_ihw
 
 _P = np.array([0.1, 0.2, 0.3, 0.4])
 _X = np.array([1.0, 2.0, 3.0, 4.0])
@@ -214,6 +214,29 @@ def test_both_lp_backends_smoke_on_medium_n() -> None:
     assert np.all(np.isfinite(numpy_fit.adj_pvalues))
     np.testing.assert_allclose(np.mean(highs.weights), 1.0, atol=1e-8)
     np.testing.assert_allclose(np.mean(numpy_fit.weights), 1.0, atol=1e-8)
+
+
+def test_highs_runs_without_numba() -> None:
+    result = adjust_ihw(_P, _X, 0.1, nfolds=1, seed=1, use_numba=False)
+    assert np.all(np.isfinite(result.weights))
+    assert np.all(np.isfinite(result.adj_pvalues))
+
+
+def test_grenander_jit_matches_numpy() -> None:
+    if not _numba_importable():
+        pytest.skip("numba is not installed")
+    rng = np.random.default_rng(2)
+    p = rng.uniform(size=80)
+    x = rng.uniform(size=80)
+    g = np.array([0, 1, 2, 3] * 20)
+    off = adjust_ihw(
+        p, x, 0.1, nbins=4, nfolds=1, groups=g, seed=1, use_numba=False
+    )
+    on = adjust_ihw(
+        p, x, 0.1, nbins=4, nfolds=1, groups=g, seed=1, use_numba=True
+    )
+    np.testing.assert_allclose(on.adj_pvalues, off.adj_pvalues)
+    np.testing.assert_allclose(on.weights, off.weights)
 
 
 def test_single_bin_matches_bh() -> None:
