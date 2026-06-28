@@ -215,38 +215,82 @@ _LP_EPS = 1e-9
 _LP_MAX_ITER = 250000
 
 
+_simplex_tableau_jit = None
+
+
+def _simplex_tableau_loops(
+    tableau: np.ndarray, basis: np.ndarray, eps: float, max_iter: int
+) -> tuple[np.ndarray, np.ndarray]:
+    m = tableau.shape[0] - 1
+    n_tot = tableau.shape[1] - 1
+    for _it in range(max_iter):
+        enter = -1
+        for j in range(n_tot):
+            if tableau[m, j] < -eps:
+                enter = j
+                break
+        if enter < 0:
+            return tableau, basis
+        min_ratio = np.inf
+        any_pos = False
+        for i in range(m):
+            col_i = tableau[i, enter]
+            if col_i > eps:
+                any_pos = True
+                ratio = tableau[i, n_tot] / col_i
+                if ratio < min_ratio:
+                    min_ratio = ratio
+        if not any_pos:
+            raise RuntimeError("weight LP did not solve: unbounded")
+        leave = -1
+        leave_basis = 0
+        for i in range(m):
+            col_i = tableau[i, enter]
+            if col_i > eps:
+                ratio = tableau[i, n_tot] / col_i
+                if abs(ratio - min_ratio) <= eps:
+                    if leave < 0 or basis[i] < leave_basis:
+                        leave = i
+                        leave_basis = basis[i]
+        pivot = tableau[leave, enter]
+        ncols = n_tot + 1
+        for j in range(ncols):
+            tableau[leave, j] /= pivot
+        for i in range(m + 1):
+            if i == leave:
+                continue
+            fac = tableau[i, enter]
+            if fac != 0.0:
+                for j in range(ncols):
+                    tableau[i, j] -= fac * tableau[leave, j]
+        basis[leave] = enter
+    raise RuntimeError("weight LP did not solve: iteration limit")
+
+
 def _simplex_tableau(
     tableau: np.ndarray,
     basis: list[int],
     eps: float,
     max_iter: int,
+    use_numba: bool | None = None,
 ) -> tuple[np.ndarray, list[int]]:
-    m = tableau.shape[0] - 1
-    n_tot = tableau.shape[1] - 1
-    basis = [int(i) for i in basis]
-    for _ in range(max_iter):
-        reduced = tableau[-1, :n_tot]
-        enter_cands = np.flatnonzero(reduced < -eps)
-        if enter_cands.size == 0:
-            return tableau, basis
-        enter = int(enter_cands[0])
-        col = tableau[:m, enter]
-        pos = col > eps
-        if not np.any(pos):
-            raise RuntimeError("weight LP did not solve: unbounded")
-        rhs = tableau[:m, -1]
-        ratios = np.full(m, np.inf, dtype=np.float64)
-        ratios[pos] = rhs[pos] / col[pos]
-        min_ratio = float(np.min(ratios))
-        tied = pos & (np.abs(ratios - min_ratio) <= eps)
-        leave = int(min((i for i in range(m) if tied[i]), key=lambda i: basis[i]))
-        pivot = tableau[leave, enter]
-        tableau[leave] /= pivot
-        factors = tableau[:, enter].copy()
-        factors[leave] = 0.0
-        tableau -= factors[:, None] * tableau[leave]
-        basis[leave] = enter
-    raise RuntimeError("weight LP did not solve: iteration limit")
+    basis_arr = np.empty(len(basis), dtype=np.int64)
+    for i, b in enumerate(basis):
+        basis_arr[i] = int(b)
+    if _want_numba(use_numba):
+        global _simplex_tableau_jit
+        if _simplex_tableau_jit is None:
+            from numba import njit
+
+            _simplex_tableau_jit = njit(_simplex_tableau_loops, cache=True)
+        tableau, basis_arr = _simplex_tableau_jit(
+            tableau, basis_arr, float(eps), int(max_iter)
+        )
+    else:
+        tableau, basis_arr = _simplex_tableau_loops(
+            tableau, basis_arr, eps, max_iter
+        )
+    return tableau, [int(v) for v in basis_arr]
 
 
 def _clear_obj_basic(tableau: np.ndarray, basis: list[int], eps: float) -> None:
@@ -258,7 +302,9 @@ def _clear_obj_basic(tableau: np.ndarray, basis: list[int], eps: float) -> None:
             tableau[-1] -= coef * tableau[i]
 
 
-def _max_tableau(c: np.ndarray, g: np.ndarray, h: np.ndarray) -> np.ndarray:
+def _max_tableau(
+    c: np.ndarray, g: np.ndarray, h: np.ndarray, use_numba: bool | None = None
+) -> np.ndarray:
     n = c.shape[0]
     m = g.shape[0]
     row_scale = np.max(np.abs(g), axis=1)
@@ -302,7 +348,9 @@ def _max_tableau(c: np.ndarray, g: np.ndarray, h: np.ndarray) -> np.ndarray:
                 k += 1
             else:
                 basis.append(n + i)
-        tableau, basis = _simplex_tableau(tableau, basis, _LP_EPS, _LP_MAX_ITER)
+        tableau, basis = _simplex_tableau(
+            tableau, basis, _LP_EPS, _LP_MAX_ITER, use_numba
+        )
         art_sum = 0.0
         for i, bi in enumerate(basis):
             if bi >= n_struct:
@@ -336,7 +384,9 @@ def _max_tableau(c: np.ndarray, g: np.ndarray, h: np.ndarray) -> np.ndarray:
     tableau[-1, :] = 0.0
     tableau[-1, :n] = -c
     _clear_obj_basic(tableau, basis, _LP_EPS)
-    tableau, basis = _simplex_tableau(tableau, basis, _LP_EPS, _LP_MAX_ITER)
+    tableau, basis = _simplex_tableau(
+        tableau, basis, _LP_EPS, _LP_MAX_ITER, use_numba
+    )
     y = np.zeros(n, dtype=np.float64)
     for i, bi in enumerate(basis):
         if bi < n:
@@ -350,6 +400,7 @@ def _solve_lp_numpy(
     b_ub: np.ndarray,
     lb: np.ndarray,
     ub: np.ndarray,
+    use_numba: bool | None = None,
 ) -> np.ndarray:
     c = np.asarray(objective, dtype=np.float64).ravel()
     a_ub = np.asarray(a_ub, dtype=np.float64)
@@ -388,7 +439,7 @@ def _solve_lp_numpy(
             else:
                 y[j] = 0.0
         return y + lb
-    y = _max_tableau(c, g, h)
+    y = _max_tableau(c, g, h, use_numba)
     y = np.maximum(y, 0.0)
     y[y < 1e-10] = 0.0
     x = y + lb
@@ -410,9 +461,10 @@ def _solve_lp(
     lb: np.ndarray,
     ub: np.ndarray,
     lp_backend: str = "highs",
+    use_numba: bool | None = None,
 ) -> np.ndarray:
     if lp_backend == "numpy":
-        return _solve_lp_numpy(objective, a_ub, b_ub, lb, ub)
+        return _solve_lp_numpy(objective, a_ub, b_ub, lb, ub, use_numba)
     if lp_backend != "highs":
         raise ValueError(f"Unknown lp_backend: {lp_backend!r}")
     global linprog
@@ -536,7 +588,7 @@ def _ihw_convex(
     ub = np.full(n_vars, 2.0, dtype=np.float64)
     if n_aux:
         ub[n_base:] = np.inf
-    sol = _solve_lp(objective, rows, rhs, lb, ub, lp_backend)
+    sol = _solve_lp(objective, rows, rhs, lb, ub, lp_backend, use_numba)
     thresholds = np.maximum(sol[nbins : 2 * nbins], 0.0)
     return _thresholds_to_weights(thresholds, m_groups)
 
