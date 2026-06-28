@@ -1,8 +1,9 @@
 from pathlib import Path
 
 import numpy as np
+import pytest
 
-from ihw import adjust_ihw
+from ihw import _numba_importable, adjust_ihw
 
 ORACLE = Path(__file__).resolve().parent / "fixtures" / "r_inf_n1.npz"
 ORACLE_N5 = Path(__file__).resolve().parent / "fixtures" / "r_inf_n5.npz"
@@ -106,5 +107,45 @@ def test_numpy_is_finite_on_n5_oracle() -> None:
     np.testing.assert_array_equal(result.folds, folds)
     max_abs_adj = float(np.max(np.abs(result.adj_pvalues - data["adj_pvalues"])))
     max_abs_w = float(np.max(np.abs(result.weights - data["weights"])))
+    assert np.isfinite(max_abs_adj)
+    assert np.isfinite(max_abs_w)
+
+
+def test_numpy_numba_is_finite_on_n1_oracle() -> None:
+    if not _numba_importable():
+        pytest.skip("numba is not installed")
+    data = np.load(ORACLE)
+    p = np.asarray(data["p"], dtype=np.float64)
+    x = np.asarray(data["x"], dtype=np.float64)
+    groups = np.asarray(data["groups"], dtype=np.intp)
+    off = adjust_ihw(
+        p,
+        x,
+        0.1,
+        nbins=4,
+        nfolds=1,
+        groups=groups,
+        seed=1,
+        lp_backend="numpy",
+        use_numba=False,
+    )
+    on = adjust_ihw(
+        p,
+        x,
+        0.1,
+        nbins=4,
+        nfolds=1,
+        groups=groups,
+        seed=1,
+        lp_backend="numpy",
+        use_numba=True,
+    )
+    assert np.all(np.isfinite(on.weights))
+    assert np.all(np.isfinite(on.adj_pvalues))
+    np.testing.assert_allclose(np.mean(on.weights), 1.0, atol=1e-8)
+    np.testing.assert_allclose(on.adj_pvalues, off.adj_pvalues, atol=1e-8, rtol=1e-6)
+    np.testing.assert_allclose(on.weights, off.weights, atol=1e-8, rtol=1e-6)
+    max_abs_adj = float(np.max(np.abs(on.adj_pvalues - data["adj_pvalues"])))
+    max_abs_w = float(np.max(np.abs(on.weights - data["weights"])))
     assert np.isfinite(max_abs_adj)
     assert np.isfinite(max_abs_w)

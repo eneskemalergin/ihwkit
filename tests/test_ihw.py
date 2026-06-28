@@ -239,6 +239,22 @@ def test_grenander_jit_matches_numpy() -> None:
     np.testing.assert_allclose(on.weights, off.weights)
 
 
+def test_numpy_numba_tracks_numpy_on_a_small_sim() -> None:
+    if not _numba_importable():
+        pytest.skip("numba is not installed")
+    rng = np.random.default_rng(3)
+    p = rng.uniform(size=120)
+    x = rng.uniform(size=120)
+    off = adjust_ihw(
+        p, x, 0.1, nbins=4, nfolds=1, seed=1, lp_backend="numpy", use_numba=False
+    )
+    on = adjust_ihw(
+        p, x, 0.1, nbins=4, nfolds=1, seed=1, lp_backend="numpy", use_numba=True
+    )
+    np.testing.assert_allclose(on.adj_pvalues, off.adj_pvalues)
+    np.testing.assert_allclose(on.weights, off.weights)
+
+
 def test_single_bin_matches_bh() -> None:
     rng = np.random.default_rng(0)
     p = rng.uniform(size=80)
