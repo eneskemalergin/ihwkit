@@ -2,7 +2,7 @@
 
 Independent Hypothesis Weighting. A local NumPy + SciPy module: covariate-weighted FDR via Grenander estimation, a linear program (`scipy.optimize.linprog`, HiGHS), and weighted Benjamini-Hochberg.
 
-Needs NumPy and SciPy. Install from the repository root with `pip install -e .` (or `uv pip install -e .`), then `from ihw import adjust_ihw`. Without installing, from the repository root:
+Needs NumPy and SciPy. Install from the repository root with `pip install -e .` (or `uv pip install -e .`), then `from ihw import adjust_ihw`. `pip install -e ".[numba]"` adds an optional Numba extra; the default path does not require it. Without installing, from the repository root:
 
 ```python
 import sys
