@@ -33,6 +33,25 @@ if (!requireNamespace("IHW", quietly = TRUE)) {
   cat("r skip IHW is not installed\n")
   quit(save = "no", status = 0L)
 }
+trailing <- commandArgs(trailingOnly = TRUE)
+nfolds_loop <- c(1L, 5L)
+if (length(trailing) >= 1L) {
+  nf <- as.integer(trailing[[1]])
+  if (length(nf) != 1L || is.na(nf) || !(nf %in% c(1L, 5L))) {
+    cat("r skip nfolds must be 1 or 5\n")
+    quit(save = "no", status = 0L)
+  }
+  nfolds_loop <- nf
+}
+vm_hwm_kb <- function() {
+  st <- tryCatch(readLines("/proc/self/status"), error = function(e) character())
+  line <- grep("^VmHWM:", st, value = TRUE)
+  if (length(line) != 1L) {
+    return(NA_integer_)
+  }
+  parts <- strsplit(trimws(sub("^VmHWM:", "", line[[1]])), "[[:space:]]+")[[1]]
+  as.integer(parts[[1]])
+}
 tmp_sim <- file.path(root, "tmp", "bench_sim.npz")
 fallback <- file.path(root, "tests", "fixtures", "sim_n2000_seed1.npz")
 sim <- if (file.exists(tmp_sim)) tmp_sim else fallback
@@ -86,7 +105,7 @@ src <- if (identical(normalizePath(sim), normalizePath(tmp_sim))) {
 } else {
   "tests/fixtures/sim_n2000_seed1.npz"
 }
-for (nfolds in c(1L, 5L)) {
+for (nfolds in nfolds_loop) {
   times <- numeric(n_reps)
   rej <- NA_integer_
   for (i in seq_len(n_reps)) {
@@ -105,15 +124,18 @@ for (nfolds in c(1L, 5L)) {
   }
   times <- sort(times)
   med <- times[[(n_reps + 1L) %/% 2L]]
+  rss <- vm_hwm_kb()
+  rss_txt <- if (is.na(rss)) "NA" else as.character(rss)
   cat(
     sprintf(
-      "r sim %s n=%d nfolds=%d median_s %.6f rejections %d reps=%d\n",
+      "r sim %s n=%d nfolds=%d median_s %.6f rejections %d reps=%d rss_max %s kilobytes\n",
       src,
       length(p),
       nfolds,
       med,
       rej,
-      n_reps
+      n_reps,
+      rss_txt
     )
   )
 }
