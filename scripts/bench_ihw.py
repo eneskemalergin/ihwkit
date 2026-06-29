@@ -264,23 +264,13 @@ def main() -> None:
         writer.writerows(rows)
     print(f"wrote {csv_path.relative_to(ROOT)}")
 
-    rng = np.random.default_rng(21)
-    p_null = rng.uniform(size=p.shape[0])
-    x_null = rng.uniform(size=p.shape[0])
     print(
-        f"uniform_null n={p_null.shape[0]} independent_cov nbins=4 lambda=inf reps={n_reps}"
+        f"uniform_null n={p.shape[0]} independent_cov nbins=4 lambda=inf reps={n_reps}"
     )
     for nfolds in (1, 5):
-        run("highs", nfolds, p_null, x_null, use_numba=False)
-        run("numpy", nfolds, p_null, x_null, use_numba=False)
-        for backend in ("highs", "numpy"):
-            med, fit = median_wall(
-                backend, nfolds, p_null, x_null, use_numba=False
-            )
-            rej = int(np.sum(fit.adj_pvalues <= alpha))
-            print(
-                f"uniform_null nfolds={nfolds} {backend} median_s {med:.6f} rejections {rej}"
-            )
+        for label in labels:
+            isolated_python(label, nfolds, "null")
+        print("uniform_null r skip null control is python-only")
 
     n1_path = ROOT / "tests" / "fixtures" / "r_inf_n1.npz"
     n1 = np.load(n1_path)
@@ -292,8 +282,11 @@ def main() -> None:
     print(f"oracle n1 n={p1.shape[0]} frozen_groups nbins=4 lambda=inf reps={n_reps}")
     run("highs", 1, p1, x1, g1, use_numba=False)
     run("numpy", 1, p1, x1, g1, use_numba=False)
+    n1_numpy = None
     for backend in ("highs", "numpy"):
         med, fit = median_wall(backend, 1, p1, x1, g1, use_numba=False)
+        if backend == "numpy":
+            n1_numpy = fit
         rej = int(np.sum(fit.adj_pvalues <= alpha))
         max_adj = float(np.max(np.abs(fit.adj_pvalues - adj1)))
         max_w = float(np.max(np.abs(fit.weights - w1)))
@@ -302,6 +295,20 @@ def main() -> None:
             f"oracle n1 {backend} median_s {med:.6f} rejections {rej} "
             f"max_abs_adj_vs_r {max_adj:.6e} max_abs_weights_vs_r {max_w:.6e}{tag}"
         )
+    if _numba_importable():
+        med, fit = median_wall("numpy", 1, p1, x1, g1, use_numba=True)
+        rej = int(np.sum(fit.adj_pvalues <= alpha))
+        max_adj_r = float(np.max(np.abs(fit.adj_pvalues - adj1)))
+        max_w_r = float(np.max(np.abs(fit.weights - w1)))
+        max_adj_np = float(np.max(np.abs(fit.adj_pvalues - n1_numpy.adj_pvalues)))
+        max_w_np = float(np.max(np.abs(fit.weights - n1_numpy.weights)))
+        print(
+            f"oracle n1 numpy_numba median_s {med:.6f} rejections {rej} "
+            f"max_abs_adj_vs_numpy {max_adj_np:.6e} max_abs_weights_vs_numpy {max_w_np:.6e} "
+            f"max_abs_adj_vs_r {max_adj_r:.6e} max_abs_weights_vs_r {max_w_r:.6e} informational"
+        )
+    else:
+        print("oracle n1 numpy_numba skip numba is not installed")
 
     n5_path = ROOT / "tests" / "fixtures" / "r_inf_n5.npz"
     n5 = np.load(n5_path)
