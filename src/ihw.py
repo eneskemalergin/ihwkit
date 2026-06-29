@@ -83,6 +83,37 @@ def _iso_mean_loops(y: np.ndarray, w: np.ndarray) -> np.ndarray:
     return out
 
 
+def _iso_mean_numpy(y: np.ndarray, w: np.ndarray) -> np.ndarray:
+    n = y.shape[0]
+    if n == 1:
+        return y.copy()
+    values = y.astype(np.float64, copy=True)
+    weights = w.astype(np.float64, copy=True)
+    counts = np.ones(n, dtype=np.int64)
+    size = n
+    i = 0
+    while i < size - 1:
+        if values[i] <= values[i + 1]:
+            i += 1
+            continue
+        tw = weights[i] + weights[i + 1]
+        values[i] = (weights[i] * values[i] + weights[i + 1] * values[i + 1]) / tw
+        weights[i] = tw
+        counts[i] += counts[i + 1]
+        values[i + 1 : size - 1] = values[i + 2 : size]
+        weights[i + 1 : size - 1] = weights[i + 2 : size]
+        counts[i + 1 : size - 1] = counts[i + 2 : size]
+        size -= 1
+        if i > 0:
+            i -= 1
+    out = np.empty(n, dtype=np.float64)
+    pos = 0
+    for k in range(size):
+        out[pos : pos + int(counts[k])] = values[k]
+        pos += int(counts[k])
+    return out
+
+
 def _iso_mean(y: np.ndarray, w: np.ndarray, use_numba: bool | None = None) -> np.ndarray:
     y64 = np.asarray(y, dtype=np.float64)
     w64 = np.asarray(w, dtype=np.float64)
@@ -93,7 +124,7 @@ def _iso_mean(y: np.ndarray, w: np.ndarray, use_numba: bool | None = None) -> np
 
             _iso_mean_jit = njit(_iso_mean_loops, cache=True)
         return _iso_mean_jit(y64, w64)
-    return _iso_mean_loops(y64, w64)
+    return _iso_mean_numpy(y64, w64)
 
 
 def _grenander(
