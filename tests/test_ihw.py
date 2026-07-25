@@ -477,13 +477,14 @@ def test_auto_lambda_is_finite_and_may_differ_from_inf() -> None:
     assert weights_differ or adj_differ
 
 
-def test_bin_ties_follow_the_passed_rng() -> None:
+def test_bin_ties_follow_the_seed_not_the_fold_rng() -> None:
     rng = np.random.default_rng(0)
     p = rng.uniform(size=80)
     x = np.round(rng.uniform(size=80), decimals=1)
     a = adjust_ihw(p, x, 0.1, nbins=4, rng=np.random.default_rng(1), seed=1)
     b = adjust_ihw(p, x, 0.1, nbins=4, rng=np.random.default_rng(2), seed=1)
-    assert not np.array_equal(a.groups, b.groups)
+    np.testing.assert_array_equal(a.groups, b.groups)
+    assert not np.array_equal(a.folds, b.folds)
 
 
 def test_empty_lambdas_raise() -> None:

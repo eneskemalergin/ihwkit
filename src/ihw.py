@@ -855,7 +855,8 @@ def adjust_ihw(
             group_id = np.unique(x, return_inverse=True)[1].astype(np.intp)
             nbins_i = int(np.unique(group_id).size)
         else:
-            group_id = _groups_by_filter(x, nbins_i, rng)
+            bin_rng = np.random.default_rng(seed)
+            group_id = _groups_by_filter(x, nbins_i, bin_rng)
     if m_groups is not None:
         mg = np.asarray(m_groups, dtype=np.intp)
         if mg.ndim != 1:
