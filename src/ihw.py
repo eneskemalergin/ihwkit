@@ -7,6 +7,10 @@ import numpy as np
 linprog = None
 
 
+class IHWValidationError(ValueError):
+    pass
+
+
 @dataclass(frozen=True)
 class IHWResult:
     pvalues: np.ndarray
@@ -497,7 +501,7 @@ def _solve_lp(
     if lp_backend == "numpy":
         return _solve_lp_numpy(objective, a_ub, b_ub, lb, ub, use_numba)
     if lp_backend != "highs":
-        raise ValueError(f"Unknown lp_backend: {lp_backend!r}")
+        raise IHWValidationError(f"Unknown lp_backend: {lp_backend!r}")
     global linprog
     if linprog is None:
         from scipy.optimize import linprog as _linprog
@@ -595,7 +599,7 @@ def _ihw_convex(
                 aux_rows[ud_row, n_base + g] = 1.0
                 aux_rows[ud_row, nbins + g] = -lambda_ * float(m_groups[g])
         else:
-            raise ValueError(f"Unknown penalty: {penalty!r}")
+            raise IHWValidationError(f"Unknown penalty: {penalty!r}")
         pad = np.zeros((rows.shape[0], n_aux), dtype=np.float64)
         rows = np.vstack([np.hstack([rows, pad]), aux_rows])
         rhs = np.concatenate([rhs, aux_rhs])
@@ -614,7 +618,7 @@ def _ihw_convex(
         rows = np.vstack([rows, extra])
         rhs = np.concatenate([rhs, [alpha]])
     else:
-        raise ValueError(f"Unknown adjustment_type: {adjustment_type!r}")
+        raise IHWValidationError(f"Unknown adjustment_type: {adjustment_type!r}")
     lb = np.zeros(n_vars, dtype=np.float64)
     ub = np.full(n_vars, 2.0, dtype=np.float64)
     if n_aux:
@@ -794,33 +798,33 @@ def adjust_ihw(
     p = np.asarray(pvalues, dtype=np.float64)
     x = np.asarray(covariates, dtype=np.float64)
     if p.ndim != 1:
-        raise ValueError("pvalues must be a 1-d array")
+        raise IHWValidationError("pvalues must be a 1-d array")
     if x.ndim != 1:
-        raise ValueError("covariates must be a 1-d array")
+        raise IHWValidationError("covariates must be a 1-d array")
     if p.shape[0] == 0:
-        raise ValueError("pvalues must not be empty")
+        raise IHWValidationError("pvalues must not be empty")
     if np.any(~np.isfinite(p)):
-        raise ValueError("p-values must be finite")
+        raise IHWValidationError("p-values must be finite")
     if np.any(~np.isfinite(x)):
-        raise ValueError("covariates must be finite")
+        raise IHWValidationError("covariates must be finite")
     if np.any((p < 0.0) | (p > 1.0)):
-        raise ValueError("p-values must lie in [0, 1]")
+        raise IHWValidationError("p-values must lie in [0, 1]")
     if not (0.0 < alpha < 1.0):
-        raise ValueError(f"alpha must be in (0, 1), got {alpha}")
+        raise IHWValidationError(f"alpha must be in (0, 1), got {alpha}")
     if p.shape[0] != x.shape[0]:
-        raise ValueError(f"Length mismatch: {p.shape[0]} p-values vs {x.shape[0]} covariates")
+        raise IHWValidationError(f"Length mismatch: {p.shape[0]} p-values vs {x.shape[0]} covariates")
     if adjustment_type not in ("bh", "bonferroni"):
-        raise ValueError(f"Unknown adjustment_type: {adjustment_type!r}")
+        raise IHWValidationError(f"Unknown adjustment_type: {adjustment_type!r}")
     if covariate_type not in ("ordinal", "nominal"):
-        raise ValueError(f"Unknown covariate_type: {covariate_type!r}")
+        raise IHWValidationError(f"Unknown covariate_type: {covariate_type!r}")
     if lp_backend not in ("highs", "numpy"):
-        raise ValueError(f"Unknown lp_backend: {lp_backend!r}")
+        raise IHWValidationError(f"Unknown lp_backend: {lp_backend!r}")
     if nfolds <= 0:
-        raise ValueError(f"nfolds must be positive, got {nfolds}")
+        raise IHWValidationError(f"nfolds must be positive, got {nfolds}")
     if nfolds_internal <= 0:
-        raise ValueError(f"nfolds_internal must be positive, got {nfolds_internal}")
+        raise IHWValidationError(f"nfolds_internal must be positive, got {nfolds_internal}")
     if nsplits_internal <= 0:
-        raise ValueError(f"nsplits_internal must be positive, got {nsplits_internal}")
+        raise IHWValidationError(f"nsplits_internal must be positive, got {nsplits_internal}")
     n = p.shape[0]
     if rng is None:
         rng = np.random.default_rng(seed)
@@ -828,25 +832,25 @@ def adjust_ihw(
     if groups is not None:
         g = np.asarray(groups, dtype=np.intp)
         if g.ndim != 1:
-            raise ValueError("groups must be a 1-d array")
+            raise IHWValidationError("groups must be a 1-d array")
         if g.shape[0] != n:
-            raise ValueError(f"groups length {g.shape[0]} != {n}")
+            raise IHWValidationError(f"groups length {g.shape[0]} != {n}")
         uniq_g = np.unique(g)
         nbins_i = int(uniq_g.size)
         if nbins_i == 0 or not np.array_equal(uniq_g, np.arange(nbins_i)):
-            raise ValueError("groups labels must be in 0 .. nbins-1 with no gaps")
+            raise IHWValidationError("groups labels must be in 0 .. nbins-1 with no gaps")
         if not isinstance(nbins, str) and int(nbins) != nbins_i:
-            raise ValueError(f"nbins {int(nbins)} does not match groups")
+            raise IHWValidationError(f"nbins {int(nbins)} does not match groups")
         group_id = g
     else:
         if isinstance(nbins, str):
             if nbins != "auto":
-                raise ValueError(f"nbins must be an integer or 'auto', got {nbins!r}")
+                raise IHWValidationError(f"nbins must be an integer or 'auto', got {nbins!r}")
             nbins_i = max(1, min(40, n // 1500))
         else:
             nbins_i = int(nbins)
             if nbins_i <= 0:
-                raise ValueError(f"nbins must be positive, got {nbins}")
+                raise IHWValidationError(f"nbins must be positive, got {nbins}")
         if covariate_type == "nominal":
             group_id = np.unique(x, return_inverse=True)[1].astype(np.intp)
             nbins_i = int(np.unique(group_id).size)
@@ -855,11 +859,11 @@ def adjust_ihw(
     if m_groups is not None:
         mg = np.asarray(m_groups, dtype=np.intp)
         if mg.ndim != 1:
-            raise ValueError("m_groups must be a 1-d array")
+            raise IHWValidationError("m_groups must be a 1-d array")
         if mg.shape[0] != nbins_i:
-            raise ValueError(f"m_groups length {mg.shape[0]} != {nbins_i}")
+            raise IHWValidationError(f"m_groups length {mg.shape[0]} != {nbins_i}")
         if np.any(mg < 0):
-            raise ValueError("m_groups must be nonnegative")
+            raise IHWValidationError("m_groups must be nonnegative")
         m_groups_arr = mg
     else:
         m_groups_arr = np.bincount(group_id, minlength=nbins_i).astype(np.intp)
@@ -871,7 +875,7 @@ def adjust_ihw(
         lam_grid = np.array([np.inf], dtype=np.float64)
     elif isinstance(lambdas, str):
         if lambdas != "auto":
-            raise ValueError(f"lambdas must be an array, 'auto', or None, got {lambdas!r}")
+            raise IHWValidationError(f"lambdas must be an array, 'auto', or None, got {lambdas!r}")
         eff_nfolds = nfolds
         lam_grid = np.array(
             sorted({0.0, 1.0, nbins_i / 8, nbins_i / 4, nbins_i / 2, nbins_i, np.inf}),
@@ -881,11 +885,11 @@ def adjust_ihw(
         eff_nfolds = nfolds
         lam_grid = np.asarray(lambdas, dtype=np.float64)
         if lam_grid.size == 0:
-            raise ValueError("lambdas must not be empty")
+            raise IHWValidationError("lambdas must not be empty")
         if np.any(np.isnan(lam_grid)):
-            raise ValueError("lambdas must be finite or +inf")
+            raise IHWValidationError("lambdas must be finite or +inf")
         if np.any(lam_grid < 0.0):
-            raise ValueError("lambdas must be nonnegative")
+            raise IHWValidationError("lambdas must be nonnegative")
     pad_method = "fdr_bh" if adjustment_type == "bh" else "bonferroni"
     if nbins_i == 1:
         order = np.argsort(p)
@@ -911,31 +915,31 @@ def adjust_ihw(
     if folds is not None:
         f = np.asarray(folds, dtype=np.intp)
         if f.ndim != 1:
-            raise ValueError("folds must be a 1-d array")
+            raise IHWValidationError("folds must be a 1-d array")
         if f.shape[0] != n:
-            raise ValueError(f"folds length {f.shape[0]} != {n}")
+            raise IHWValidationError(f"folds length {f.shape[0]} != {n}")
         uniq = np.unique(f)
         nfolds_f = int(uniq.size)
         if nfolds_f == 0 or not np.array_equal(uniq, np.arange(nfolds_f)):
-            raise ValueError("folds labels must be in 0 .. nfolds-1 with no gaps")
+            raise IHWValidationError("folds labels must be in 0 .. nfolds-1 with no gaps")
         if not exploratory:
             eff_nfolds = nfolds_f
         elif nfolds_f != 1:
-            raise ValueError("folds labels must be in 0 .. nfolds-1 with no gaps")
+            raise IHWValidationError("folds labels must be in 0 .. nfolds-1 with no gaps")
         sorted_folds = f[order]
     preset_lams = None
     if fold_lambdas is not None and not exploratory:
         fl = np.asarray(fold_lambdas, dtype=np.float64)
         if fl.ndim != 1:
-            raise ValueError("fold_lambdas must be a 1-d array")
+            raise IHWValidationError("fold_lambdas must be a 1-d array")
         if fl.shape[0] != eff_nfolds:
-            raise ValueError(f"fold_lambdas length {fl.shape[0]} != {eff_nfolds}")
+            raise IHWValidationError(f"fold_lambdas length {fl.shape[0]} != {eff_nfolds}")
         if fl.size == 0:
-            raise ValueError("fold_lambdas must not be empty")
+            raise IHWValidationError("fold_lambdas must not be empty")
         if np.any(np.isnan(fl)):
-            raise ValueError("fold_lambdas must be finite or +inf")
+            raise IHWValidationError("fold_lambdas must be finite or +inf")
         if np.any(fl < 0.0):
-            raise ValueError("fold_lambdas must be nonnegative")
+            raise IHWValidationError("fold_lambdas must be nonnegative")
         preset_lams = fl
     result = _ihw_internal(
         group_id[order],

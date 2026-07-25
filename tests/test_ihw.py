@@ -4,7 +4,14 @@ import numpy as np
 import pytest
 from scipy.stats import norm
 
-from ihw import _numba_importable, _p_adjust, _solve_lp, _thresholds_to_weights, adjust_ihw
+from ihw import (
+    IHWValidationError,
+    _numba_importable,
+    _p_adjust,
+    _solve_lp,
+    _thresholds_to_weights,
+    adjust_ihw,
+)
 
 _P = np.array([0.1, 0.2, 0.3, 0.4])
 _X = np.array([1.0, 2.0, 3.0, 4.0])
@@ -63,6 +70,13 @@ def test_unknown_covariate_type_raises() -> None:
 def test_unknown_lp_backend_raises() -> None:
     with pytest.raises(ValueError, match="lp_backend"):
         adjust_ihw(_P, _X, 0.1, lp_backend="symphony")
+
+
+def test_validation_error_is_named() -> None:
+    with pytest.raises(IHWValidationError, match="empty"):
+        adjust_ihw(np.array([]), np.array([]), 0.1)
+    with pytest.raises(ValueError, match="empty"):
+        adjust_ihw(np.array([]), np.array([]), 0.1)
 
 
 def test_default_lp_backend_still_runs() -> None:
