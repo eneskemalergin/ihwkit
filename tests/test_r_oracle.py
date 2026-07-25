@@ -3,7 +3,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from ihw import _numba_importable, adjust_ihw
+from ihw import _numba_importable, _p_adjust, _safe_divide, adjust_ihw
 
 ORACLE = Path(__file__).resolve().parent / "fixtures" / "r_inf_n1.npz"
 ORACLE_N5 = Path(__file__).resolve().parent / "fixtures" / "r_inf_n5.npz"
@@ -149,3 +149,21 @@ def test_numpy_numba_is_finite_on_n1_oracle() -> None:
     max_abs_w = float(np.max(np.abs(on.weights - data["weights"])))
     assert np.isfinite(max_abs_adj)
     assert np.isfinite(max_abs_w)
+
+
+def test_bh_on_r_weights_matches_n1_oracle() -> None:
+    data = np.load(ORACLE)
+    p = np.asarray(data["p"], dtype=np.float64)
+    weights = np.asarray(data["weights"], dtype=np.float64)
+    adj = _p_adjust(_safe_divide(p, weights), "fdr_bh")
+    np.testing.assert_allclose(adj, data["adj_pvalues"], atol=1e-8, rtol=1e-6)
+    assert int(np.sum(adj <= 0.1)) == int(data["rejections"])
+
+
+def test_bh_on_r_weights_matches_n5_oracle() -> None:
+    data = np.load(ORACLE_N5)
+    p = np.asarray(data["p"], dtype=np.float64)
+    weights = np.asarray(data["weights"], dtype=np.float64)
+    adj = _p_adjust(_safe_divide(p, weights), "fdr_bh")
+    np.testing.assert_allclose(adj, data["adj_pvalues"], atol=1e-8, rtol=1e-6)
+    assert int(np.sum(adj <= 0.1)) == int(data["rejections"])
