@@ -133,6 +133,18 @@ def test_numpy_lp_matches_highs_on_random_box_lps() -> None:
         assert np.all(x_numpy <= 2.0 + 1e-8)
 
 
+def test_numpy_lp_column_scale_tracks_highs() -> None:
+    c = np.array([1.0, 1e6])
+    a = np.array([[1.0, 1e6], [1e-6, 1.0]])
+    b = np.array([2.0, 2.0])
+    lb = np.zeros(2)
+    ub = np.full(2, np.inf)
+    x_highs = _solve_lp(c, a, b, lb, ub, "highs")
+    x_numpy = _solve_lp(c, a, b, lb, ub, "numpy")
+    np.testing.assert_allclose(c @ x_numpy, c @ x_highs, atol=1e-6, rtol=1e-6)
+    np.testing.assert_allclose(x_numpy, x_highs, atol=1e-5, rtol=1e-5)
+
+
 def test_numpy_lp_infeasible_raises() -> None:
     c = np.array([1.0])
     a = np.array([[1.0], [-1.0]])

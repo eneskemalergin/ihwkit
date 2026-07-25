@@ -356,6 +356,9 @@ def _max_tableau(
     row_scale = np.max(np.abs(g), axis=1)
     g = g / row_scale[:, None]
     h = h / row_scale
+    col_scale = np.sqrt(np.maximum(np.max(np.abs(g), axis=0), 1e-300))
+    g = g / col_scale
+    c = c / col_scale
     m = g.shape[0]
     tableau = np.zeros((m + 1, n + m + 1), dtype=np.float64)
     tableau[:m, :n] = g
@@ -426,7 +429,7 @@ def _max_tableau(
     for i, bi in enumerate(basis):
         if bi < n:
             y[bi] = tableau[i, -1]
-    return y
+    return y / col_scale
 
 
 def _solve_lp_numpy(
