@@ -2,6 +2,10 @@
 args <- commandArgs(trailingOnly = FALSE)
 file_arg <- sub("^--file=", "", grep("^--file=", args, value = TRUE))
 root <- dirname(dirname(normalizePath(file_arg[[1]])))
+renv_ihw <- Sys.glob(file.path(root, "renv", "library", "*", "*", "*", "IHW"))
+if (length(renv_ihw) >= 1L) {
+  .libPaths(c(dirname(renv_ihw[[1]]), .libPaths()))
+}
 trailing <- commandArgs(trailingOnly = TRUE)
 nfolds <- 1L
 if (length(trailing) >= 1L) {
@@ -10,8 +14,21 @@ if (length(trailing) >= 1L) {
 if (length(nfolds) != 1L || is.na(nfolds) || !(nfolds %in% c(1L, 5L))) {
   stop("nfolds must be 1 or 5")
 }
-sim <- file.path(root, "tests", "fixtures", "sim_n2000_seed1.npz")
-out <- file.path(root, "tests", "fixtures", sprintf("r_inf_n%d.npz", nfolds))
+sim_tag <- "n2000"
+if (length(trailing) >= 2L) {
+  sim_tag <- trailing[[2]]
+}
+if (identical(sim_tag, "n5000")) {
+  sim <- file.path(root, "tests", "fixtures", "sim_n5000_seed42.npz")
+  out <- file.path(root, "tests", "fixtures", sprintf("r_inf_n%d_n5000.npz", nfolds))
+  ihw_seed <- 42L
+} else if (identical(sim_tag, "n2000")) {
+  sim <- file.path(root, "tests", "fixtures", "sim_n2000_seed1.npz")
+  out <- file.path(root, "tests", "fixtures", sprintf("r_inf_n%d.npz", nfolds))
+  ihw_seed <- 1L
+} else {
+  stop("sim must be n2000 or n5000")
+}
 if (!file.exists(sim)) {
   stop(sprintf("missing sim fixture: %s", sim))
 }
@@ -21,6 +38,10 @@ if (!requireNamespace("IHW", quietly = TRUE)) {
 py <- Sys.which("python3")
 if (!nzchar(py)) {
   py <- Sys.which("python")
+}
+venv_py <- file.path(root, ".venv", "bin", "python3")
+if (file.exists(venv_py)) {
+  py <- venv_py
 }
 if (!nzchar(py)) {
   stop("python3 is required to read and write npz")
@@ -55,7 +76,7 @@ res <- ihw(
   nbins = 4L,
   nfolds = nfolds,
   lambdas = Inf,
-  seed = 1L
+  seed = ihw_seed
 )
 adj <- as.numeric(adj_pvalues(res))
 w <- as.numeric(weights(res))
