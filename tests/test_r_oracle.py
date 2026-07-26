@@ -151,6 +151,70 @@ def test_numpy_numba_is_finite_on_n1_oracle() -> None:
     assert np.isfinite(max_abs_w)
 
 
+def test_numpy_numba_tracks_numpy_on_n5_oracle() -> None:
+    if not _numba_importable():
+        pytest.skip("numba is not installed")
+    data = np.load(ORACLE_N5)
+    p = np.asarray(data["p"], dtype=np.float64)
+    x = np.asarray(data["x"], dtype=np.float64)
+    groups = np.asarray(data["groups"], dtype=np.intp)
+    folds = np.asarray(data["folds"], dtype=np.intp)
+    off = adjust_ihw(
+        p,
+        x,
+        0.1,
+        nbins=4,
+        nfolds=5,
+        groups=groups,
+        folds=folds,
+        seed=1,
+        lp_backend="numpy",
+        use_numba=False,
+    )
+    on = adjust_ihw(
+        p,
+        x,
+        0.1,
+        nbins=4,
+        nfolds=5,
+        groups=groups,
+        folds=folds,
+        seed=1,
+        lp_backend="numpy",
+        use_numba=True,
+    )
+    assert np.all(np.isfinite(on.weights))
+    assert np.all(np.isfinite(on.adj_pvalues))
+    np.testing.assert_allclose(on.adj_pvalues, off.adj_pvalues, atol=1e-8, rtol=1e-6)
+    np.testing.assert_allclose(on.weights, off.weights, atol=1e-8, rtol=1e-6)
+    max_abs_adj = float(np.max(np.abs(on.adj_pvalues - data["adj_pvalues"])))
+    max_abs_w = float(np.max(np.abs(on.weights - data["weights"])))
+    assert np.isfinite(max_abs_adj)
+    assert np.isfinite(max_abs_w)
+
+
+def test_highs_still_matches_n1_and_n5_r_oracles() -> None:
+    data = np.load(ORACLE)
+    p = np.asarray(data["p"], dtype=np.float64)
+    x = np.asarray(data["x"], dtype=np.float64)
+    groups = np.asarray(data["groups"], dtype=np.intp)
+    highs = adjust_ihw(
+        p, x, 0.1, nbins=4, nfolds=1, groups=groups, seed=1, lp_backend="highs"
+    )
+    np.testing.assert_allclose(highs.adj_pvalues, data["adj_pvalues"], atol=1e-8, rtol=1e-6)
+    np.testing.assert_allclose(highs.weights, data["weights"], atol=1e-8, rtol=1e-6)
+    data5 = np.load(ORACLE_N5)
+    p5 = np.asarray(data5["p"], dtype=np.float64)
+    x5 = np.asarray(data5["x"], dtype=np.float64)
+    g5 = np.asarray(data5["groups"], dtype=np.intp)
+    f5 = np.asarray(data5["folds"], dtype=np.intp)
+    highs5 = adjust_ihw(
+        p5, x5, 0.1, nbins=4, nfolds=5, groups=g5, folds=f5, seed=1, lp_backend="highs"
+    )
+    np.testing.assert_allclose(highs5.adj_pvalues, data5["adj_pvalues"], atol=1e-8, rtol=1e-6)
+    np.testing.assert_allclose(highs5.weights, data5["weights"], atol=1e-8, rtol=1e-6)
+
+
 def test_bh_on_r_weights_matches_n1_oracle() -> None:
     data = np.load(ORACLE)
     p = np.asarray(data["p"], dtype=np.float64)
