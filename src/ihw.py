@@ -55,32 +55,25 @@ def _iso_mean_loops(y: np.ndarray, w: np.ndarray) -> np.ndarray:
     values = np.empty(n, dtype=np.float64)
     weights = np.empty(n, dtype=np.float64)
     counts = np.empty(n, dtype=np.int64)
-    for i0 in range(n):
-        values[i0] = y[i0]
-        weights[i0] = w[i0]
-        counts[i0] = 1
-    size = n
-    i = 0
-    while i < size - 1:
-        if values[i] <= values[i + 1]:
-            i += 1
-            continue
-        tw = weights[i] + weights[i + 1]
-        values[i] = (weights[i] * values[i] + weights[i + 1] * values[i + 1]) / tw
-        weights[i] = tw
-        counts[i] += counts[i + 1]
-        for j in range(i + 1, size - 1):
-            values[j] = values[j + 1]
-            weights[j] = weights[j + 1]
-            counts[j] = counts[j + 1]
-        size -= 1
-        if i > 0:
-            i -= 1
+    k = 0
+    for i in range(n):
+        values[k] = y[i]
+        weights[k] = w[i]
+        counts[k] = 1
+        k += 1
+        while k >= 2 and values[k - 2] > values[k - 1]:
+            tw = weights[k - 2] + weights[k - 1]
+            values[k - 2] = (
+                weights[k - 2] * values[k - 2] + weights[k - 1] * values[k - 1]
+            ) / tw
+            weights[k - 2] = tw
+            counts[k - 2] += counts[k - 1]
+            k -= 1
     out = np.empty(n, dtype=np.float64)
     pos = 0
-    for k in range(size):
-        ck = counts[k]
-        vk = values[k]
+    for i in range(k):
+        ck = counts[i]
+        vk = values[i]
         for t in range(ck):
             out[pos + t] = vk
         pos += ck
@@ -88,34 +81,7 @@ def _iso_mean_loops(y: np.ndarray, w: np.ndarray) -> np.ndarray:
 
 
 def _iso_mean_numpy(y: np.ndarray, w: np.ndarray) -> np.ndarray:
-    n = y.shape[0]
-    if n == 1:
-        return y.copy()
-    values = y.astype(np.float64, copy=True)
-    weights = w.astype(np.float64, copy=True)
-    counts = np.ones(n, dtype=np.int64)
-    size = n
-    i = 0
-    while i < size - 1:
-        if values[i] <= values[i + 1]:
-            i += 1
-            continue
-        tw = weights[i] + weights[i + 1]
-        values[i] = (weights[i] * values[i] + weights[i + 1] * values[i + 1]) / tw
-        weights[i] = tw
-        counts[i] += counts[i + 1]
-        values[i + 1 : size - 1] = values[i + 2 : size]
-        weights[i + 1 : size - 1] = weights[i + 2 : size]
-        counts[i + 1 : size - 1] = counts[i + 2 : size]
-        size -= 1
-        if i > 0:
-            i -= 1
-    out = np.empty(n, dtype=np.float64)
-    pos = 0
-    for k in range(size):
-        out[pos : pos + int(counts[k])] = values[k]
-        pos += int(counts[k])
-    return out
+    return _iso_mean_loops(np.asarray(y, dtype=np.float64), np.asarray(w, dtype=np.float64))
 
 
 def _iso_mean(y: np.ndarray, w: np.ndarray, use_numba: bool | None = None) -> np.ndarray:
@@ -206,20 +172,23 @@ def _groups_by_filter(covariates: np.ndarray, nbins: int, rng: np.random.Generat
     order = np.argsort(covariates, kind="mergesort")
     cov_sorted = covariates[order]
     ranks = np.empty(n, dtype=np.float64)
-    i = 0
-    while i < n:
-        j = i + 1
-        while j < n and cov_sorted[j] == cov_sorted[i]:
-            j += 1
-        base = float(i + 1)
-        block_len = j - i
-        if block_len == 1:
-            ranks[order[i]] = base
-        else:
-            offs = rng.permutation(block_len).astype(np.float64)
-            for k in range(block_len):
-                ranks[order[i + k]] = base + offs[k]
-        i = j
+    if n == 1 or bool(np.all(cov_sorted[1:] != cov_sorted[:-1])):
+        ranks[order] = np.arange(1, n + 1, dtype=np.float64)
+    else:
+        i = 0
+        while i < n:
+            j = i + 1
+            while j < n and cov_sorted[j] == cov_sorted[i]:
+                j += 1
+            base = float(i + 1)
+            block_len = j - i
+            if block_len == 1:
+                ranks[order[i]] = base
+            else:
+                offs = rng.permutation(block_len).astype(np.float64)
+                for k in range(block_len):
+                    ranks[order[i + k]] = base + offs[k]
+            i = j
     groups = np.ceil((ranks / n) * nbins).astype(np.intp) - 1
     return np.clip(groups, 0, nbins - 1).astype(np.intp)
 
