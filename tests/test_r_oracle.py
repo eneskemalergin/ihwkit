@@ -7,6 +7,8 @@ from ihw import _numba_importable, _p_adjust, _safe_divide, adjust_ihw
 
 ORACLE = Path(__file__).resolve().parent / "fixtures" / "r_inf_n1.npz"
 ORACLE_N5 = Path(__file__).resolve().parent / "fixtures" / "r_inf_n5.npz"
+ORACLE_N1_5000 = Path(__file__).resolve().parent / "fixtures" / "r_inf_n1_n5000.npz"
+ORACLE_N5_5000 = Path(__file__).resolve().parent / "fixtures" / "r_inf_n5_n5000.npz"
 
 
 def test_python_replay_matches_r_oracle() -> None:
@@ -231,3 +233,51 @@ def test_bh_on_r_weights_matches_n5_oracle() -> None:
     adj = _p_adjust(_safe_divide(p, weights), "fdr_bh")
     np.testing.assert_allclose(adj, data["adj_pvalues"], atol=1e-8, rtol=1e-6)
     assert int(np.sum(adj <= 0.1)) == int(data["rejections"])
+
+
+def test_python_replay_matches_n5000_n1_r_oracle() -> None:
+    data = np.load(ORACLE_N1_5000)
+    p = np.asarray(data["p"], dtype=np.float64)
+    x = np.asarray(data["x"], dtype=np.float64)
+    groups = np.asarray(data["groups"], dtype=np.intp)
+    assert p.shape == (5000,)
+    np.testing.assert_array_equal(np.unique(groups), np.arange(4))
+    result = adjust_ihw(
+        p, x, 0.1, nbins=4, nfolds=1, groups=groups, seed=42, lp_backend="highs"
+    )
+    np.testing.assert_allclose(result.adj_pvalues, data["adj_pvalues"], atol=1e-8, rtol=1e-6)
+    np.testing.assert_allclose(result.weights, data["weights"], atol=1e-8, rtol=1e-6)
+    assert int(np.sum(result.adj_pvalues <= 0.1)) == int(data["rejections"])
+
+
+def test_python_replay_matches_n5000_n5_r_oracle() -> None:
+    data = np.load(ORACLE_N5_5000)
+    p = np.asarray(data["p"], dtype=np.float64)
+    x = np.asarray(data["x"], dtype=np.float64)
+    groups = np.asarray(data["groups"], dtype=np.intp)
+    folds = np.asarray(data["folds"], dtype=np.intp)
+    result = adjust_ihw(
+        p,
+        x,
+        0.1,
+        nbins=4,
+        nfolds=5,
+        groups=groups,
+        folds=folds,
+        seed=42,
+        lp_backend="highs",
+    )
+    np.testing.assert_allclose(result.adj_pvalues, data["adj_pvalues"], atol=1e-8, rtol=1e-6)
+    np.testing.assert_allclose(result.weights, data["weights"], atol=1e-8, rtol=1e-6)
+    assert int(np.sum(result.adj_pvalues <= 0.1)) == int(data["rejections"])
+    np.testing.assert_array_equal(result.folds, folds)
+
+
+def test_bh_on_r_weights_matches_n5000_oracles() -> None:
+    for path in (ORACLE_N1_5000, ORACLE_N5_5000):
+        data = np.load(path)
+        p = np.asarray(data["p"], dtype=np.float64)
+        weights = np.asarray(data["weights"], dtype=np.float64)
+        adj = _p_adjust(_safe_divide(p, weights), "fdr_bh")
+        np.testing.assert_allclose(adj, data["adj_pvalues"], atol=1e-8, rtol=1e-6)
+        assert int(np.sum(adj <= 0.1)) == int(data["rejections"])

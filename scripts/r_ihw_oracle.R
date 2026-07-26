@@ -6,6 +6,29 @@ renv_ihw <- Sys.glob(file.path(root, "renv", "library", "*", "*", "*", "IHW"))
 if (length(renv_ihw) >= 1L) {
   .libPaths(c(dirname(renv_ihw[[1]]), .libPaths()))
 }
+setHook(
+  packageEvent("lpsymphony", "onLoad"),
+  function(...) {
+    ns <- asNamespace("lpsymphony")
+    if (!exists("lpsymphony_solve_LP", envir = ns, inherits = FALSE)) {
+      return(invisible(NULL))
+    }
+    unlockBinding("lpsymphony_solve_LP", ns)
+    fun <- get("lpsymphony_solve_LP", ns)
+    walk <- function(expr) {
+      if (is.call(expr)) {
+        if (identical(expr[[1L]], quote(double)) && length(expr) == 1L) {
+          return(quote(double(nr)))
+        }
+        return(as.call(lapply(expr, walk)))
+      }
+      expr
+    }
+    body(fun) <- walk(body(fun))
+    assign("lpsymphony_solve_LP", fun, envir = ns)
+    lockBinding("lpsymphony_solve_LP", ns)
+  }
+)
 trailing <- commandArgs(trailingOnly = TRUE)
 nfolds <- 1L
 if (length(trailing) >= 1L) {
