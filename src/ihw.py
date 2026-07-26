@@ -278,9 +278,7 @@ def _simplex_tableau(
     max_iter: int,
     use_numba: bool | None = None,
 ) -> tuple[np.ndarray, list[int]]:
-    basis_arr = np.empty(len(basis), dtype=np.int64)
-    for i, b in enumerate(basis):
-        basis_arr[i] = int(b)
+    basis_arr = np.asarray(basis, dtype=np.int64)
     if _want_numba(use_numba):
         global _simplex_tableau_jit
         if _simplex_tableau_jit is None:

@@ -264,6 +264,20 @@ def main() -> None:
         writer.writerows(rows)
     print(f"wrote {csv_path.relative_to(ROOT)}")
 
+    by = {}
+    for row in rows:
+        by[(int(row["nfolds"]), row["backend"])] = float(row["median_s"])
+    for nfolds in (1, 5):
+        r_med = by.get((nfolds, "r"))
+        nb_med = by.get((nfolds, "numpy_numba"))
+        if r_med is None or nb_med is None:
+            continue
+        tag = "below_r" if nb_med < r_med else "not_below_r"
+        print(
+            f"inf_wall nfolds={nfolds} numpy_numba_median_s {nb_med:.6f} "
+            f"r_median_s {r_med:.6f} {tag}"
+        )
+
     print(
         f"uniform_null n={p.shape[0]} independent_cov nbins=4 lambda=inf reps={n_reps}"
     )
