@@ -22,9 +22,9 @@ result.weights
 
 Default fit is five-fold cross-validation with λ = ∞ (no inner λ search). `exploratory=True` uses a single fold and is for inspection, not claimed FDR control. `lambdas="auto"` runs the Bioconductor-style λ grid with nested CV; that path uses HiGHS, not SYMPHONY.
 
-`nbins="auto"` is `max(1, min(40, n // 1500))`, so n < 1500 is single-bin BH unless `nbins` is set. If the weight LP fails to solve, `adjust_ihw` raises `RuntimeError`.
+`nbins="auto"` is `max(1, min(40, n // 1500))`, so n < 1500 is single-bin BH unless `nbins` is set. Bad inputs raise `IHWValidationError` (a `ValueError` subclass). If the weight LP fails to solve, `adjust_ihw` raises `RuntimeError`.
 
-`covariate_type="nominal"` uses each unique covariate value as a group (not quantile bins). `rng` (or `seed` when `rng` is omitted) drives both bin-tie permutation and fold assignment. `IHWResult.fold_lambdas` is the λ chosen for each fold (all `inf` on the default path). `IHWResult.m_groups` is the per-bin hypothesis count used in the weight LP and in BH `n_tests`.
+`covariate_type="nominal"` uses each unique covariate value as a group (not quantile bins). `seed` drives bin-tie permutation through its own Generator (R `groups_by_filter`). `rng` (or `seed` when `rng` is omitted) drives fold assignment. `IHWResult.fold_lambdas` is the λ chosen for each fold (all `inf` on the default path). `IHWResult.m_groups` is the per-bin hypothesis count used in the weight LP and in BH `n_tests`.
 
 Pass `groups=`, `folds=`, `fold_lambdas=`, and `m_groups=` to freeze the partition and regularization. Preset `groups=` skips covariate binning. Preset `fold_lambdas=` skips the inner λ search. Preset `m_groups=` is the filtered-p path: BH uses `sum(m_groups)` even when only a subset of p-values is observed.
 
@@ -37,3 +37,5 @@ The default weight LP is HiGHS (`lp_backend="highs"`). `lp_backend="numpy"` is a
 Larger benches: `scripts/make_bench_sim.py` writes an n=8000 informative sim to `tmp/bench_sim.npz` (gitignored). `scripts/bench_ihw.py` loads that file if present, otherwise the n=2000 fixture. The main table is four-way at nfolds=1 and 5: **r** (`IHW::ihw`), **scipy** (HiGHS, `use_numba=False`), **numpy**, and **numpy_numba**. Each Python backend runs in a child process so `rss_max` is not cumulative across columns. Numba is warmed up, then median of 5. `numpy_numba` is skipped if Numba is missing. Frozen n1/n5 quality+time still reports HiGHS vs R; numpy vs R and numpy_numba vs R are informational. Uniform-null isolated RSS is python-only (no R column). An S19-style mixture at n=2000 (n=8000 if the tmp sim is present) still prints HiGHS vs numpy. Numbers go to stdout and `tmp/bench_last.csv`. Default fit remains λ=∞ HiGHS.
 
 Optional R wall time uses the same p/x as the loaded sim: `Rscript --vanilla scripts/r_ihw_bench.R` (λ=Inf, nfolds 1 and 5, median of 5, `rss_max` from VmHWM). If IHW is not installed it prints a skip line and exits 0. `scripts/bench_ihw.py` calls that helper once per nfolds. A local venv is enough for scipy and numpy. `pip install -e ".[numba]"` is only needed for the numpy_numba column. Python still runs when R is missing. Replay of the stored R oracles stays on HiGHS.
+
+`lab/` is local evidence, not the installable API. `lab/validity_study.py --quick` compares BH vs IHW (λ=∞, nfolds=5, HiGHS) on simulated nulls and mixtures and writes `tmp/results/`. `lab/parity_cases.py` names the frozen R-gold replay cases (n=2000 now; n=5000 later). The library is still one module: `from ihw import adjust_ihw`.
