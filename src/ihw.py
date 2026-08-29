@@ -1,52 +1,48 @@
+"""Independent Hypothesis Weighting with a NumPy and Numba runtime."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
 
 import numpy as np
+from numpy.typing import ArrayLike, NDArray
 
-linprog = None
+try:
+    from numba import njit
+except ImportError as exc:
+    raise ImportError(
+        "ihwkit requires Numba for its production implementation"
+    ) from exc
+
+FloatArray = NDArray[np.float64]
+IntegerArray = NDArray[np.intp]
 
 
 class IHWValidationError(ValueError):
-    pass
+    """Raised when an IHW input or option violates the public contract."""
 
 
 @dataclass(frozen=True)
 class IHWResult:
-    pvalues: np.ndarray
-    adj_pvalues: np.ndarray
-    weights: np.ndarray
-    weighted_pvalues: np.ndarray
-    groups: np.ndarray
-    folds: np.ndarray
+    """Return adjusted p-values, learned weights, and fit metadata."""
+
+    pvalues: FloatArray
+    adj_pvalues: FloatArray
+    weights: FloatArray
+    weighted_pvalues: FloatArray
+    groups: IntegerArray
+    folds: IntegerArray
     alpha: float
     nbins: int
     nfolds: int
     penalty: str
     adjustment_type: str
-    fold_lambdas: np.ndarray
-    m_groups: np.ndarray
+    fold_lambdas: FloatArray
+    m_groups: IntegerArray
 
 
-_iso_mean_jit = None
-
-
-def _numba_importable() -> bool:
-    try:
-        import importlib.util
-
-        return importlib.util.find_spec("numba") is not None
-    except (ImportError, ValueError):
-        return False
-
-
-def _want_numba(use_numba: bool | None) -> bool:
-    if use_numba is False:
-        return False
-    return _numba_importable()
-
-
-def _iso_mean_loops(y: np.ndarray, w: np.ndarray) -> np.ndarray:
+@njit(cache=False)
+def _iso_mean_loops(y: FloatArray, w: FloatArray) -> FloatArray:
     n = y.shape[0]
     if n == 1:
         out0 = np.empty(1, dtype=np.float64)
@@ -80,26 +76,17 @@ def _iso_mean_loops(y: np.ndarray, w: np.ndarray) -> np.ndarray:
     return out
 
 
-def _iso_mean_numpy(y: np.ndarray, w: np.ndarray) -> np.ndarray:
-    return _iso_mean_loops(np.asarray(y, dtype=np.float64), np.asarray(w, dtype=np.float64))
+def _iso_mean(y: np.ndarray, w: np.ndarray) -> FloatArray:
+    """Run the production Numba PAVA kernel on float64 arrays."""
 
-
-def _iso_mean(y: np.ndarray, w: np.ndarray, use_numba: bool | None = None) -> np.ndarray:
-    y64 = np.asarray(y, dtype=np.float64)
-    w64 = np.asarray(w, dtype=np.float64)
-    if _want_numba(use_numba):
-        global _iso_mean_jit
-        if _iso_mean_jit is None:
-            from numba import njit
-
-            _iso_mean_jit = njit(_iso_mean_loops, cache=True)
-        return _iso_mean_jit(y64, w64)
-    return _iso_mean_numpy(y64, w64)
+    return _iso_mean_loops(
+        np.asarray(y, dtype=np.float64), np.asarray(w, dtype=np.float64)
+    )
 
 
 def _grenander(
-    sorted_pvalues: np.ndarray, m_total: int, use_numba: bool | None = None
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    sorted_pvalues: FloatArray, m_total: int
+) -> tuple[FloatArray, FloatArray, FloatArray]:
     if sorted_pvalues.shape[0] == 0:
         return np.array([0.0]), np.array([0.0]), np.array([1.0])
     unique_p, counts = np.unique(sorted_pvalues, return_counts=True)
@@ -115,7 +102,7 @@ def _grenander(
     rawslope = dy / dx
     rawslope = np.where(np.isposinf(rawslope), np.finfo(np.float64).max, rawslope)
     rawslope = np.where(np.isneginf(rawslope), -np.finfo(np.float64).max, rawslope)
-    slope = -_iso_mean(-rawslope, dx, use_numba)
+    slope = -_iso_mean(-rawslope, dx)
     dup = np.concatenate(([True], slope[1:] != slope[:-1]))
     x_knots = unique_p[np.concatenate([dup, [True]])]
     dx_knots = np.diff(x_knots)
@@ -215,16 +202,14 @@ def _split_pvalues_by_group(pvalues: np.ndarray, groups: np.ndarray, nbins: int)
     return out
 
 
-_LP_EPS = 1e-9
+_LP_EPS = 1e-7
+_LP_FEAS_TOL = 1e-5
 _LP_MAX_ITER = 250000
 
-
-_simplex_tableau_jit = None
-
-
+@njit(cache=False)
 def _simplex_tableau_loops(
-    tableau: np.ndarray, basis: np.ndarray, eps: float, max_iter: int
-) -> tuple[np.ndarray, np.ndarray]:
+    tableau: FloatArray, basis: IntegerArray, eps: float, max_iter: int
+) -> tuple[FloatArray, IntegerArray]:
     m = tableau.shape[0] - 1
     n_tot = tableau.shape[1] - 1
     for _it in range(max_iter):
@@ -242,20 +227,21 @@ def _simplex_tableau_loops(
             if col_i > eps:
                 any_pos = True
                 ratio = tableau[i, n_tot] / col_i
-                if ratio < min_ratio:
-                    min_ratio = ratio
+                min_ratio = min(min_ratio, ratio)
         if not any_pos:
             raise RuntimeError("weight LP did not solve: unbounded")
         leave = -1
         leave_basis = 0
         for i in range(m):
             col_i = tableau[i, enter]
-            if col_i > eps:
-                ratio = tableau[i, n_tot] / col_i
-                if abs(ratio - min_ratio) <= eps:
-                    if leave < 0 or basis[i] < leave_basis:
-                        leave = i
-                        leave_basis = basis[i]
+            if col_i <= eps:
+                continue
+            ratio = tableau[i, n_tot] / col_i
+            if abs(ratio - min_ratio) <= eps and (
+                leave < 0 or basis[i] < leave_basis
+            ):
+                leave = i
+                leave_basis = basis[i]
         pivot = tableau[leave, enter]
         ncols = n_tot + 1
         for j in range(ncols):
@@ -276,22 +262,11 @@ def _simplex_tableau(
     basis: list[int],
     eps: float,
     max_iter: int,
-    use_numba: bool | None = None,
-) -> tuple[np.ndarray, list[int]]:
+) -> tuple[FloatArray, list[int]]:
     basis_arr = np.asarray(basis, dtype=np.int64)
-    if _want_numba(use_numba):
-        global _simplex_tableau_jit
-        if _simplex_tableau_jit is None:
-            from numba import njit
-
-            _simplex_tableau_jit = njit(_simplex_tableau_loops, cache=True)
-        tableau, basis_arr = _simplex_tableau_jit(
-            tableau, basis_arr, float(eps), int(max_iter)
-        )
-    else:
-        tableau, basis_arr = _simplex_tableau_loops(
-            tableau, basis_arr, eps, max_iter
-        )
+    tableau, basis_arr = _simplex_tableau_loops(
+        np.asarray(tableau, dtype=np.float64), basis_arr, float(eps), int(max_iter)
+    )
     return tableau, [int(v) for v in basis_arr]
 
 
@@ -304,9 +279,7 @@ def _clear_obj_basic(tableau: np.ndarray, basis: list[int], eps: float) -> None:
             tableau[-1] -= coef * tableau[i]
 
 
-def _max_tableau(
-    c: np.ndarray, g: np.ndarray, h: np.ndarray, use_numba: bool | None = None
-) -> np.ndarray:
+def _max_tableau(c: FloatArray, g: FloatArray, h: FloatArray) -> FloatArray:
     n = c.shape[0]
     m = g.shape[0]
     row_scale = np.max(np.abs(g), axis=1)
@@ -353,9 +326,7 @@ def _max_tableau(
                 k += 1
             else:
                 basis.append(n + i)
-        tableau, basis = _simplex_tableau(
-            tableau, basis, _LP_EPS, _LP_MAX_ITER, use_numba
-        )
+        tableau, basis = _simplex_tableau(tableau, basis, _LP_EPS, _LP_MAX_ITER)
         art_sum = 0.0
         for i, bi in enumerate(basis):
             if bi >= n_struct:
@@ -389,9 +360,7 @@ def _max_tableau(
     tableau[-1, :] = 0.0
     tableau[-1, :n] = -c
     _clear_obj_basic(tableau, basis, _LP_EPS)
-    tableau, basis = _simplex_tableau(
-        tableau, basis, _LP_EPS, _LP_MAX_ITER, use_numba
-    )
+    tableau, basis = _simplex_tableau(tableau, basis, _LP_EPS, _LP_MAX_ITER)
     y = np.zeros(n, dtype=np.float64)
     for i, bi in enumerate(basis):
         if bi < n:
@@ -405,8 +374,7 @@ def _solve_lp_numpy(
     b_ub: np.ndarray,
     lb: np.ndarray,
     ub: np.ndarray,
-    use_numba: bool | None = None,
-) -> np.ndarray:
+) -> FloatArray:
     c = np.asarray(objective, dtype=np.float64).ravel()
     a_ub = np.asarray(a_ub, dtype=np.float64)
     b_ub = np.asarray(b_ub, dtype=np.float64).ravel()
@@ -444,7 +412,7 @@ def _solve_lp_numpy(
             else:
                 y[j] = 0.0
         return y + lb
-    y = _max_tableau(c, g, h, use_numba)
+    y = _max_tableau(c, g, h)
     y = np.maximum(y, 0.0)
     y[y < 1e-10] = 0.0
     x = y + lb
@@ -456,39 +424,12 @@ def _solve_lp_numpy(
     x[near_ub] = ub[near_ub]
     if not np.all(np.isfinite(x)):
         raise RuntimeError("weight LP did not solve: non-finite solution")
-    return x
-
-
-def _solve_lp(
-    objective: np.ndarray,
-    a_ub: np.ndarray,
-    b_ub: np.ndarray,
-    lb: np.ndarray,
-    ub: np.ndarray,
-    lp_backend: str = "highs",
-    use_numba: bool | None = None,
-) -> np.ndarray:
-    if lp_backend == "numpy":
-        return _solve_lp_numpy(objective, a_ub, b_ub, lb, ub, use_numba)
-    if lp_backend != "highs":
-        raise IHWValidationError(f"Unknown lp_backend: {lp_backend!r}")
-    global linprog
-    if linprog is None:
-        from scipy.optimize import linprog as _linprog
-
-        linprog = _linprog
-    n = objective.shape[0]
-    bounds = []
-    for j in range(n):
-        hi = float(ub[j]) if np.isfinite(ub[j]) else None
-        bounds.append((float(lb[j]), hi))
-    res = linprog(-objective, A_ub=a_ub, b_ub=b_ub, bounds=bounds, method="highs")
-    if not res.success or res.x is None:
-        detail = getattr(res, "message", "no solution")
-        raise RuntimeError(f"weight LP did not solve: {detail}")
-    x = np.asarray(res.x, dtype=np.float64)
-    if not np.all(np.isfinite(x)):
-        raise RuntimeError("weight LP did not solve: non-finite solution")
+    residual = a_ub @ x - b_ub
+    residual_limit = _LP_FEAS_TOL * (1.0 + np.abs(b_ub))
+    if np.any(residual > residual_limit):
+        raise RuntimeError("weight LP did not solve: infeasible solution")
+    if np.any(x < lb - _LP_FEAS_TOL) or np.any(x > ub + _LP_FEAS_TOL):
+        raise RuntimeError("weight LP did not solve: bound violation")
     return x
 
 
@@ -500,16 +441,14 @@ def _ihw_convex(
     penalty: str,
     lambda_: float,
     adjustment_type: str,
-    lp_backend: str = "highs",
-    use_numba: bool | None = None,
-) -> np.ndarray:
+) -> FloatArray:
     nbins = len(split_sorted_pvalues)
     if lambda_ == 0.0:
         return np.ones(nbins, dtype=np.float64)
     clipped = [np.where(pv > 1e-20, pv, 0.0).astype(np.float64) for pv in split_sorted_pvalues]
     m = int(np.sum(m_groups))
     grenander_list = [
-        _grenander(pv, int(mg), use_numba)
+        _grenander(pv, int(mg))
         for pv, mg in zip(clipped, m_groups_grenander, strict=True)
     ]
     n_constraints = sum(len(g[2]) for g in grenander_list)
@@ -593,7 +532,7 @@ def _ihw_convex(
     ub = np.full(n_vars, 2.0, dtype=np.float64)
     if n_aux:
         ub[n_base:] = np.inf
-    sol = _solve_lp(objective, rows, rhs, lb, ub, lp_backend, use_numba)
+    sol = _solve_lp_numpy(objective, rows, rhs, lb, ub)
     thresholds = np.maximum(sol[nbins : 2 * nbins], 0.0)
     return _thresholds_to_weights(thresholds, m_groups)
 
@@ -609,8 +548,6 @@ def _select_lambda(
     nsplits_internal: int,
     adjustment_type: str,
     rng: np.random.Generator,
-    lp_backend: str = "highs",
-    use_numba: bool | None = None,
 ) -> float:
     order = np.argsort(sorted_pvalues)
     internal_p = sorted_pvalues[order]
@@ -633,8 +570,6 @@ def _select_lambda(
                 adjustment_type,
                 rng,
                 inner_folds,
-                lp_backend=lp_backend,
-                use_numba=use_numba,
             )
             scores[lam_idx] += float(result["rjs"])
     scores /= float(nsplits_internal)
@@ -655,9 +590,7 @@ def _ihw_internal(
     rng: np.random.Generator,
     sorted_folds: np.ndarray | None,
     preset_fold_lambdas: np.ndarray | None = None,
-    lp_backend: str = "highs",
-    use_numba: bool | None = None,
-) -> dict:
+) -> dict[str, object]:
     n = sorted_pvalues.shape[0]
     nbins = m_groups.shape[0]
     folds_prespecified = sorted_folds is not None
@@ -713,8 +646,6 @@ def _ihw_internal(
                 nsplits_internal,
                 adjustment_type,
                 rng,
-                lp_backend,
-                use_numba,
             )
         ws = _ihw_convex(
             train_split,
@@ -724,8 +655,6 @@ def _ihw_internal(
             penalty,
             best_lambda,
             adjustment_type,
-            lp_backend,
-            use_numba,
         )
         sorted_weights[fold_weight_mask] = ws[sorted_groups[fold_weight_mask]]
         fold_lambdas[fold_idx] = best_lambda
@@ -744,8 +673,8 @@ def _ihw_internal(
 
 
 def adjust_ihw(
-    pvalues,
-    covariates,
+    pvalues: ArrayLike,
+    covariates: ArrayLike,
     alpha: float,
     *,
     exploratory: bool = False,
@@ -754,17 +683,64 @@ def adjust_ihw(
     nfolds: int = 5,
     nfolds_internal: int = 5,
     nsplits_internal: int = 1,
-    lambdas=None,
+    lambdas: ArrayLike | str | None = None,
     adjustment_type: str = "bh",
-    folds=None,
-    groups=None,
-    fold_lambdas=None,
-    m_groups=None,
+    folds: ArrayLike | None = None,
+    groups: ArrayLike | None = None,
+    fold_lambdas: ArrayLike | None = None,
+    m_groups: ArrayLike | None = None,
     rng: np.random.Generator | None = None,
     seed: int | None = 1,
-    lp_backend: str = "highs",
-    use_numba: bool | None = None,
 ) -> IHWResult:
+    """Run independent hypothesis weighting with the production solver.
+
+    Parameters
+    ----------
+    pvalues : array-like
+        One-dimensional p-values in the closed interval ``[0, 1]``.
+    covariates : array-like
+        One-dimensional finite covariates aligned with ``pvalues``.
+    alpha : float
+        Target false discovery rate or family-wise error level.
+    exploratory : bool, optional
+        Use one fold and infinite lambda for weight inspection.
+    covariate_type : {"ordinal", "nominal"}, optional
+        Grouping rule for the covariates.
+    nbins : int or {"auto"}, optional
+        Number of groups for ordinal covariates.
+    nfolds : int, optional
+        Number of outer cross-validation folds.
+    nfolds_internal : int, optional
+        Number of inner folds for lambda selection.
+    nsplits_internal : int, optional
+        Number of inner cross-validation repetitions.
+    lambdas : array-like, {"auto"} or None, optional
+        Infinite-lambda default, an explicit lambda grid, or the built-in grid.
+    adjustment_type : {"bh", "bonferroni"}, optional
+        Multiple-testing adjustment used by the weight optimization.
+    folds, groups, fold_lambdas, m_groups : array-like or None, optional
+        Optional frozen partitions, regularization values, or family group counts.
+    rng : numpy.random.Generator or None, optional
+        Generator used for fold assignment and lambda selection.
+    seed : int or None, optional
+        Seed used for bin tie permutations and for the default fold generator.
+
+    Returns
+    -------
+    IHWResult
+        Adjusted p-values, weighted p-values, weights, partitions, and metadata.
+
+    Raises
+    ------
+    IHWValidationError
+        If an input, partition, or option violates the public contract.
+    RuntimeError
+        If the production dense simplex solver cannot find a finite solution.
+
+    Notes
+    -----
+    NumPy stores the arrays and Numba executes the PAVA and dense simplex kernels. There is no runtime backend switch or optional solver fallback.
+    """
     p = np.asarray(pvalues, dtype=np.float64)
     x = np.asarray(covariates, dtype=np.float64)
     if p.ndim != 1:
@@ -787,8 +763,6 @@ def adjust_ihw(
         raise IHWValidationError(f"Unknown adjustment_type: {adjustment_type!r}")
     if covariate_type not in ("ordinal", "nominal"):
         raise IHWValidationError(f"Unknown covariate_type: {covariate_type!r}")
-    if lp_backend not in ("highs", "numpy"):
-        raise IHWValidationError(f"Unknown lp_backend: {lp_backend!r}")
     if nfolds <= 0:
         raise IHWValidationError(f"nfolds must be positive, got {nfolds}")
     if nfolds_internal <= 0:
@@ -926,8 +900,6 @@ def adjust_ihw(
         rng,
         sorted_folds,
         preset_lams,
-        lp_backend,
-        use_numba,
     )
     inv = np.argsort(order)
     return IHWResult(

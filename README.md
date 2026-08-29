@@ -1,43 +1,86 @@
 # ihwkit
 
-Independent Hypothesis Weighting. A local NumPy + SciPy module: covariate-weighted FDR via Grenander estimation, a linear program (`scipy.optimize.linprog`, HiGHS), and weighted Benjamini-Hochberg.
+Independent Hypothesis Weighting for covariate-weighted multiple testing.
 
-Needs NumPy and SciPy. Install from the repository root with `pip install -e .` (or `uv pip install -e .`), then `from ihw import adjust_ihw`. `pip install -e ".[numba]"` adds an optional Numba extra; the default path does not require it. Without installing, from the repository root:
+## Runtime
+
+The installable library has one implementation: NumPy arrays and required Numba kernels. The weight optimization uses the dense simplex solver in `src/ihw.py`. SciPy is not an installable runtime dependency and is not a hidden fallback.
+
+The supported runtime is Python 3.12 or newer with NumPy and Numba. Install the project from the repository root in an active environment:
+
+```bash
+python -m pip install -e .
+```
+
+The public entry point is `adjust_ihw`:
 
 ```python
-import sys
-
-sys.path.insert(0, "src")
-
 import numpy as np
+
 from ihw import adjust_ihw
 
-p = np.random.default_rng(0).uniform(size=5000)
-cov = np.random.default_rng(1).uniform(size=5000)
+rng = np.random.default_rng(0)
+pvalues = rng.uniform(size=5000)
+covariates = rng.uniform(size=5000)
 
-result = adjust_ihw(p, cov, alpha=0.1, seed=1)
+result = adjust_ihw(pvalues, covariates, alpha=0.1, seed=1)
 result.adj_pvalues
 result.weights
 ```
 
-Default fit is five-fold cross-validation with λ = ∞ (no inner λ search). `exploratory=True` uses a single fold and is for inspection, not claimed FDR control. `lambdas="auto"` runs the Bioconductor-style λ grid with nested CV; that path uses HiGHS, not SYMPHONY.
+The default fit uses five outer folds and infinite lambda, so no inner lambda search runs. `exploratory=True` uses one fold for weight inspection and is not a testing guarantee. `lambdas="auto"` enables the built-in lambda grid and nested cross-validation.
 
-`nbins="auto"` is `max(1, min(40, n // 1500))`, so n < 1500 is single-bin BH unless `nbins` is set. Bad inputs raise `IHWValidationError` (a `ValueError` subclass). If the weight LP fails to solve, `adjust_ihw` raises `RuntimeError`.
+`nbins="auto"` selects `max(1, min(40, n // 1500))`. Set `nbins` explicitly when a small fixture needs more than one group. Invalid input, partition, and option values raise `IHWValidationError`. A failed or nonfinite weight optimization raises `RuntimeError`.
 
-`covariate_type="nominal"` uses each unique covariate value as a group (not quantile bins). `seed` drives bin-tie permutation through its own Generator (R `groups_by_filter`). `rng` (or `seed` when `rng` is omitted) drives fold assignment. `IHWResult.fold_lambdas` is the λ chosen for each fold (all `inf` on the default path). `IHWResult.m_groups` is the per-bin hypothesis count used in the weight LP and in BH `n_tests`.
+The public function has no solver or JIT switches. `lp_backend` and `use_numba` are not accepted parameters.
 
-Pass `groups=`, `folds=`, `fold_lambdas=`, and `m_groups=` to freeze the partition and regularization. Preset `groups=` skips covariate binning. Preset `fold_lambdas=` skips the inner λ search. Preset `m_groups=` is the filtered-p path: BH uses `sum(m_groups)` even when only a subset of p-values is observed.
+## Data and peer methods
 
-`IHWResult` also holds `weighted_pvalues`, `groups`, `folds`, `nbins`, `nfolds`, `m_groups`, and `fold_lambdas`.
+`data/manifest.json` records fixture paths, sizes, seeds, provenance, and release eligibility. The development loader is `tools/data_contract.py`; it normalizes `pvalues` and `covariates` to one-dimensional float64 arrays and validates optional frozen groups, folds, and lambda values.
 
-Default here is λ=∞ and nfolds=5. R IHW defaults to `lambdas="auto"`. Frozen λ=∞ gold: `tests/fixtures/r_inf_n1.npz` and `r_inf_n5.npz` (n=2000) plus `r_inf_n1_n5000.npz` and `r_inf_n5_n5000.npz` (n=5000 Ignatiadis sim, seed 42). Replay uses frozen `groups=` / `folds=` on HiGHS. Unfrozen `seed` is not claimed to match R. Auto-λ total variation is not bit-identical to SYMPHONY.
+The comparison implementations are tool-owned and are not part of the installable API:
 
-The default weight LP is HiGHS (`lp_backend="highs"`). `lp_backend="numpy"` is an experimental dense tableau simplex and may differ from R. SciPy is still required for the default path. `use_numba=None` JITs Grenander/PAVA and the numpy LP when the optional Numba extra is installed; `use_numba=False` keeps the NumPy kernels. There is no `lp_backend="numba"`. `scripts/compare_lp_backends.py` runs HiGHS and numpy on `tests/fixtures/sim_n2000_seed1.npz` (nfolds=1 and 5, λ=∞): median of 5 wall times, rejection counts, max-abs of weights and adj-p. Replay of the stored R oracles stays on HiGHS.
+- **`ihwkit_numpy_numba`:** the production library path.
+- **`ihwkit_numpy`:** a pinned pre-transition dense NumPy simplex baseline.
+- **`ihwkit_scipy`:** a pinned pre-transition SciPy HiGHS baseline.
+- **`pyihw`:** an adapter for the public pyihw package, reported unavailable when the package or supported API is absent.
+- **`r_ihw`:** an adapter for native R IHW.
+- **`julia_ihw`:** an adapter for the preliminary Julia package, reported unavailable when Julia or the package is absent.
 
-Larger benches: `scripts/make_bench_sim.py` writes an n=8000 informative sim to `tmp/bench_sim.npz` (gitignored). `scripts/bench_ihw.py` loads that file if present, otherwise the n=2000 fixture. The main table is four-way at nfolds=1 and 5: **r** (`IHW::ihw`), **scipy** (HiGHS, `use_numba=False`), **numpy**, and **numpy_numba**. Each Python backend runs in a child process so `rss_max` is not cumulative across columns. Numba is warmed up, then median of 5. `numpy_numba` is skipped if Numba is missing. Frozen n1/n5 quality+time still reports HiGHS vs R; numpy vs R and numpy_numba vs R on the oracles are informational. Uniform-null isolated RSS is python-only (no R column). An S19-style mixture at n=2000 (n=8000 if the tmp sim is present) still prints HiGHS vs numpy. Numbers go to stdout and `tmp/bench_last.csv`. Default fit remains λ=∞ HiGHS.
+Run a correctness and availability gate with:
 
-On that n=8000 λ=∞ sim, after warmup, isolated medians of 5 were numpy_numba 0.003782 s vs R 0.018000 s at nfolds=1, and 0.009606 s vs 0.036000 s at nfolds=5. Warmup is printed separately.
+```bash
+python tools/check_peer_correctness.py
+```
 
-Optional R wall time uses the same p/x as the loaded sim: `Rscript --vanilla scripts/r_ihw_bench.R` (λ=Inf, nfolds 1 and 5, median of 5, `rss_max` from VmHWM). If IHW is not installed it prints a skip line and exits 0. `scripts/bench_ihw.py` calls that helper once per nfolds. A local venv is enough for scipy and numpy. `pip install -e ".[numba]"` is only needed for the numpy_numba column. Python still runs when R is missing. Replay of the stored R oracles stays on HiGHS.
+Synthetic lambda-infinity replay uses the frozen R oracle cases. Rejection counts, adjusted p-values, weights, and error status are separate checks. A close rejection count alone is not a parity claim.
 
-`lab/` is local evidence, not the installable API. `lab/replay_parity.py` replays the frozen R partitions (BH@R and HiGHS vs R; numpy/numba informational). `lab/run_recommended_checks.py` gates `ihw_inf_fast`, `ihw_inf_cv`, and `ihw_auto_fastgrid` on oracle replay and a uniform-null smoke; airway is skipped if the csv is missing. `lab/validity_study.py --quick` compares BH vs IHW (λ=∞, nfolds=5, HiGHS) on simulated nulls and writes `tmp/results/`. The library is still one module: `from ihw import adjust_ihw`.
+Airway files are local diagnostics only. Their provenance and licensing are unresolved, so `.gitignore` excludes them and they never block a synthetic release gate.
+
+## Benchmarks
+
+`/home/eke/bin/zebrac` version 0.6.2 is the selected Linux benchmark binary. Benchmark metadata records its path, reported version, date, command, and runtime details.
+
+Run a small process-level comparison with:
+
+```bash
+python tools/benchmark_zebrac.py --dataset sim_5000_seed42 --duration 5000 --warmup 3 --min-samples 10 --max-samples 10
+```
+
+The production command runs first, followed by available peer adapters. Raw zebrac JSON and adapter metadata are written under ignored `tmp/results/`. The measurement includes process startup, fixture loading, and any JIT initialization performed by an adapter. Keep cold process measurements separate from any future warmed algorithm measurement.
+
+## Development
+
+Run package-only tests with a temporary pytest runner when pytest is not installed in the minimal runtime environment:
+
+```bash
+uv run --no-project --with pytest --with numpy --with numba pytest -q tests
+```
+
+Run the repository-wide gate, including tool-owned data and adapter checks, with:
+
+```bash
+uv run --no-project --with pytest --with numpy --with numba pytest -q
+```
+
+`tests/` contains tests for the installable `ihw` package only. The repository-wide test command also collects tool-owned checks under `tools/tests/`. `tools/` contains local utilities, statistical evidence workflows, data-contract code, and peer adapters. `data/` owns fixtures and oracle records. The installable module remains `src/ihw.py`.

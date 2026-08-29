@@ -5,22 +5,19 @@ build-backend = "hatchling.build"
 [project]
 name = "ihwkit"
 version = "0.1.0"
-description = "Independent Hypothesis Weighting (NumPy + SciPy)"
+description = "Independent Hypothesis Weighting (NumPy + Numba)"
 readme = "README.md"
 requires-python = ">=3.12"
 license = "MIT"
 authors = [{ name = "Enes Kemal Ergin" }]
 dependencies = [
     "numpy",
-    "scipy",
+    "numba",
 ]
-
-[project.optional-dependencies]
-numba = ["numba"]
 
 [tool.hatch.build.targets.wheel.force-include]
 "src/ihw.py" = "ihw.py"
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
-pythonpath = ["src"]
+testpaths = ["tests", "tools/tests"]
+pythonpath = ["src", "."]
