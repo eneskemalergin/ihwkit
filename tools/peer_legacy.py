@@ -85,10 +85,14 @@ def _iso_mean_loops(y: np.ndarray, w: np.ndarray) -> np.ndarray:
 
 
 def _iso_mean_numpy(y: np.ndarray, w: np.ndarray) -> np.ndarray:
-    return _iso_mean_loops(np.asarray(y, dtype=np.float64), np.asarray(w, dtype=np.float64))
+    return _iso_mean_loops(
+        np.asarray(y, dtype=np.float64), np.asarray(w, dtype=np.float64)
+    )
 
 
-def _iso_mean(y: np.ndarray, w: np.ndarray, use_numba: bool | None = None) -> np.ndarray:
+def _iso_mean(
+    y: np.ndarray, w: np.ndarray, use_numba: bool | None = None
+) -> np.ndarray:
     y64 = np.asarray(y, dtype=np.float64)
     w64 = np.asarray(w, dtype=np.float64)
     if _want_numba(use_numba):
@@ -159,7 +163,9 @@ def _fdr_bh(pvalues: np.ndarray, n_tests: int) -> np.ndarray:
     return result
 
 
-def _p_adjust(pvalues: np.ndarray, method: str, n_tests: int | None = None) -> np.ndarray:
+def _p_adjust(
+    pvalues: np.ndarray, method: str, n_tests: int | None = None
+) -> np.ndarray:
     p = np.asarray(pvalues, dtype=np.float64)
     n = n_tests if n_tests is not None else len(p)
     if n <= 0:
@@ -169,7 +175,9 @@ def _p_adjust(pvalues: np.ndarray, method: str, n_tests: int | None = None) -> n
     return _fdr_bh(p, n)
 
 
-def _groups_by_filter(covariates: np.ndarray, nbins: int, rng: np.random.Generator) -> np.ndarray:
+def _groups_by_filter(
+    covariates: np.ndarray, nbins: int, rng: np.random.Generator
+) -> np.ndarray:
     n = covariates.shape[0]
     if n == 0:
         return np.array([], dtype=np.intp)
@@ -201,7 +209,9 @@ def _assign_folds(n: int, nfolds: int, rng: np.random.Generator) -> np.ndarray:
     return rng.integers(0, nfolds, size=n, dtype=np.intp)
 
 
-def _split_pvalues_by_group(pvalues: np.ndarray, groups: np.ndarray, nbins: int) -> list[np.ndarray]:
+def _split_pvalues_by_group(
+    pvalues: np.ndarray, groups: np.ndarray, nbins: int
+) -> list[np.ndarray]:
     if pvalues.shape[0] == 0:
         return [np.array([], dtype=np.float64) for _ in range(nbins)]
     order = np.argsort(groups, kind="mergesort")
@@ -255,7 +265,9 @@ def _simplex_tableau_loops(
             col_i = tableau[i, enter]
             if col_i > eps:
                 ratio = tableau[i, n_tot] / col_i
-                if abs(ratio - min_ratio) <= eps and (leave < 0 or basis[i] < leave_basis):
+                if abs(ratio - min_ratio) <= eps and (
+                    leave < 0 or basis[i] < leave_basis
+                ):
                     leave = i
                     leave_basis = basis[i]
         pivot = tableau[leave, enter]
@@ -291,9 +303,7 @@ def _simplex_tableau(
             tableau, basis_arr, float(eps), int(max_iter)
         )
     else:
-        tableau, basis_arr = _simplex_tableau_loops(
-            tableau, basis_arr, eps, max_iter
-        )
+        tableau, basis_arr = _simplex_tableau_loops(tableau, basis_arr, eps, max_iter)
     return tableau, [int(v) for v in basis_arr]
 
 
@@ -391,9 +401,7 @@ def _max_tableau(
     tableau[-1, :] = 0.0
     tableau[-1, :n] = -c
     _clear_obj_basic(tableau, basis, _LP_EPS)
-    tableau, basis = _simplex_tableau(
-        tableau, basis, _LP_EPS, _LP_MAX_ITER, use_numba
-    )
+    tableau, basis = _simplex_tableau(tableau, basis, _LP_EPS, _LP_MAX_ITER, use_numba)
     y = np.zeros(n, dtype=np.float64)
     for i, bi in enumerate(basis):
         if bi < n:
@@ -508,7 +516,9 @@ def _ihw_convex(
     nbins = len(split_sorted_pvalues)
     if lambda_ == 0.0:
         return np.ones(nbins, dtype=np.float64)
-    clipped = [np.where(pv > 1e-20, pv, 0.0).astype(np.float64) for pv in split_sorted_pvalues]
+    clipped = [
+        np.where(pv > 1e-20, pv, 0.0).astype(np.float64) for pv in split_sorted_pvalues
+    ]
     m = int(np.sum(m_groups))
     grenander_list = [
         _grenander(pv, int(mg), use_numba)
@@ -687,13 +697,17 @@ def _ihw_internal(
             m_holdout = m_groups.copy()
             m_train = m_groups.copy()
         elif folds_prespecified:
-            holdout_counts = np.bincount(sorted_groups[fold_mask], minlength=nbins).astype(np.intp)
+            holdout_counts = np.bincount(
+                sorted_groups[fold_mask], minlength=nbins
+            ).astype(np.intp)
             m_holdout = holdout_counts
             m_train = m_groups - m_holdout
         else:
             train_counts = np.bincount(train_groups, minlength=nbins).astype(np.intp)
             m_holdout = (
-                (m_groups - m_groups_available) / nfolds + m_groups_available - train_counts
+                (m_groups - m_groups_available) / nfolds
+                + m_groups_available
+                - train_counts
             ).astype(np.intp)
             m_train = (m_groups - m_holdout).astype(np.intp)
         m_holdout = np.maximum(m_holdout, 0)
@@ -784,7 +798,9 @@ def adjust_ihw(
     if not (0.0 < alpha < 1.0):
         raise IHWValidationError(f"alpha must be in (0, 1), got {alpha}")
     if p.shape[0] != x.shape[0]:
-        raise IHWValidationError(f"Length mismatch: {p.shape[0]} p-values vs {x.shape[0]} covariates")
+        raise IHWValidationError(
+            f"Length mismatch: {p.shape[0]} p-values vs {x.shape[0]} covariates"
+        )
     if adjustment_type not in ("bh", "bonferroni"):
         raise IHWValidationError(f"Unknown adjustment_type: {adjustment_type!r}")
     if covariate_type not in ("ordinal", "nominal"):
@@ -794,9 +810,13 @@ def adjust_ihw(
     if nfolds <= 0:
         raise IHWValidationError(f"nfolds must be positive, got {nfolds}")
     if nfolds_internal <= 0:
-        raise IHWValidationError(f"nfolds_internal must be positive, got {nfolds_internal}")
+        raise IHWValidationError(
+            f"nfolds_internal must be positive, got {nfolds_internal}"
+        )
     if nsplits_internal <= 0:
-        raise IHWValidationError(f"nsplits_internal must be positive, got {nsplits_internal}")
+        raise IHWValidationError(
+            f"nsplits_internal must be positive, got {nsplits_internal}"
+        )
     n = p.shape[0]
     if rng is None:
         rng = np.random.default_rng(seed)
@@ -810,14 +830,18 @@ def adjust_ihw(
         uniq_g = np.unique(g)
         nbins_i = int(uniq_g.size)
         if nbins_i == 0 or not np.array_equal(uniq_g, np.arange(nbins_i)):
-            raise IHWValidationError("groups labels must be in 0 .. nbins-1 with no gaps")
+            raise IHWValidationError(
+                "groups labels must be in 0 .. nbins-1 with no gaps"
+            )
         if not isinstance(nbins, str) and int(nbins) != nbins_i:
             raise IHWValidationError(f"nbins {int(nbins)} does not match groups")
         group_id = g
     else:
         if isinstance(nbins, str):
             if nbins != "auto":
-                raise IHWValidationError(f"nbins must be an integer or 'auto', got {nbins!r}")
+                raise IHWValidationError(
+                    f"nbins must be an integer or 'auto', got {nbins!r}"
+                )
             nbins_i = max(1, min(40, n // 1500))
         else:
             nbins_i = int(nbins)
@@ -848,7 +872,9 @@ def adjust_ihw(
         lam_grid = np.array([np.inf], dtype=np.float64)
     elif isinstance(lambdas, str):
         if lambdas != "auto":
-            raise IHWValidationError(f"lambdas must be an array, 'auto', or None, got {lambdas!r}")
+            raise IHWValidationError(
+                f"lambdas must be an array, 'auto', or None, got {lambdas!r}"
+            )
         eff_nfolds = nfolds
         lam_grid = np.array(
             sorted({0.0, 1.0, nbins_i / 8, nbins_i / 4, nbins_i / 2, nbins_i, np.inf}),
@@ -894,11 +920,15 @@ def adjust_ihw(
         uniq = np.unique(f)
         nfolds_f = int(uniq.size)
         if nfolds_f == 0 or not np.array_equal(uniq, np.arange(nfolds_f)):
-            raise IHWValidationError("folds labels must be in 0 .. nfolds-1 with no gaps")
+            raise IHWValidationError(
+                "folds labels must be in 0 .. nfolds-1 with no gaps"
+            )
         if not exploratory:
             eff_nfolds = nfolds_f
         elif nfolds_f != 1:
-            raise IHWValidationError("folds labels must be in 0 .. nfolds-1 with no gaps")
+            raise IHWValidationError(
+                "folds labels must be in 0 .. nfolds-1 with no gaps"
+            )
         sorted_folds = f[order]
     preset_lams = None
     if fold_lambdas is not None and not exploratory:
@@ -906,7 +936,9 @@ def adjust_ihw(
         if fl.ndim != 1:
             raise IHWValidationError("fold_lambdas must be a 1-d array")
         if fl.shape[0] != eff_nfolds:
-            raise IHWValidationError(f"fold_lambdas length {fl.shape[0]} != {eff_nfolds}")
+            raise IHWValidationError(
+                f"fold_lambdas length {fl.shape[0]} != {eff_nfolds}"
+            )
         if fl.size == 0:
             raise IHWValidationError("fold_lambdas must not be empty")
         if np.any(np.isnan(fl)):
@@ -936,7 +968,9 @@ def adjust_ihw(
         pvalues=p,
         adj_pvalues=np.asarray(result["sorted_adj_p"], dtype=np.float64)[inv],
         weights=np.asarray(result["sorted_weights"], dtype=np.float64)[inv],
-        weighted_pvalues=np.asarray(result["sorted_weighted_pvalues"], dtype=np.float64)[inv],
+        weighted_pvalues=np.asarray(
+            result["sorted_weighted_pvalues"], dtype=np.float64
+        )[inv],
         groups=group_id,
         folds=np.asarray(result["sorted_folds"], dtype=np.intp)[inv],
         alpha=alpha,

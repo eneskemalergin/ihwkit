@@ -1,0 +1,700 @@
+"""Run local and external IHW comparisons through one explicit interface."""
+
+from __future__ import annotations
+
+import argparse
+import importlib.metadata
+import importlib.util
+import json
+import shutil
+import subprocess
+import sys
+import tempfile
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Literal
+
+import numpy as np
+from numpy.typing import NDArray
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "src"))
+sys.path.insert(0, str(ROOT))
+
+from tools.simulators import dense_covariate, ignatiadis
+
+FloatArray = NDArray[np.float64]
+IntegerArray = NDArray[np.intp]
+BooleanArray = NDArray[np.bool_]
+LambdaPolicy = Literal["inf", "auto"]
+MethodId = Literal[
+    "ihwkit_numpy_numba",
+    "ihwkit_numpy",
+    "ihwkit_scipy",
+    "pyihw",
+    "r_ihw",
+]
+
+METHODS: tuple[MethodId, ...] = (
+    "ihwkit_numpy_numba",
+    "ihwkit_numpy",
+    "ihwkit_scipy",
+    "pyihw",
+    "r_ihw",
+)
+COMPARISON_METHODS = METHODS[1:]
+R_SCRIPT = Path(__file__).with_name("peer.R")
+_ORACLE_PATHS = {
+    "sim_5000_inf_n1": Path("tools/fixtures/sim_5000_seed42_r_inf_n1.npz"),
+    "sim_5000_inf_n5": Path("tools/fixtures/sim_5000_seed42_r_inf_n5.npz"),
+}
+ORACLE_IDS = tuple(_ORACLE_PATHS)
+
+
+class PeerDataError(ValueError):
+    """Report an unknown, missing, or malformed peer input."""
+
+
+@dataclass(frozen=True, slots=True)
+class PeerInput:
+    """Store one generated input or frozen R comparison partition."""
+
+    dataset_id: str
+    source_path: str
+    provenance: str
+    size: int
+    seed: int | None
+    pvalues: FloatArray
+    covariates: FloatArray
+    truth_labels: BooleanArray | None = None
+    groups: IntegerArray | None = None
+    folds: IntegerArray | None = None
+    fold_lambdas: FloatArray | None = None
+    oracle_id: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class OracleRecord:
+    """Store frozen R output and the exact input used to produce it."""
+
+    peer_input: PeerInput
+    metadata: Mapping[str, object]
+    r_rejections: int
+    adjusted_pvalues: FloatArray
+    weights: FloatArray
+
+
+class PeerUnavailable(RuntimeError):
+    """Report that a requested comparison cannot run in this environment."""
+
+
+@dataclass(frozen=True, slots=True)
+class RunConfig:
+    """Store settings shared by the supported IHW comparisons."""
+
+    alpha: float = 0.1
+    nbins: int | str = "auto"
+    nfolds: int | None = None
+    lambda_policy: LambdaPolicy = "inf"
+    adjustment_type: str = "bh"
+    seed: int = 42
+
+    def as_document(self) -> dict[str, object]:
+        """Return the settings as a small JSON-compatible mapping."""
+
+        return {
+            "alpha": self.alpha,
+            "nbins": self.nbins,
+            "nfolds": self.nfolds,
+            "lambda_policy": self.lambda_policy,
+            "adjustment_type": self.adjustment_type,
+            "seed": self.seed,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class FitResult:
+    """Store normalized comparison output and its actual implementation version."""
+
+    adjusted_pvalues: FloatArray
+    weights: FloatArray | None
+    rejection_count: int
+    version: str
+
+
+def load_peer_input(dataset_id: str, *, oracle_id: str | None = None) -> PeerInput:
+    """Return a named generated input or the input inside a frozen R record.
+
+    Parameters
+    ----------
+    dataset_id : str
+        ``sim_500_seed42``, ``dense_500_seed42``, ``sim_5000_seed42``,
+        ``sim_50000_seed42``, or the optional local ``airway_seed42``.
+    oracle_id : str or None, optional
+        Frozen R record whose exact inputs and partitions should be returned.
+
+    Returns
+    -------
+    PeerInput
+        Validated one-dimensional arrays and readable provenance.
+
+    Raises
+    ------
+    PeerDataError
+        If the name is unknown or a required local record is unavailable.
+    """
+
+    if oracle_id is not None:
+        record = load_oracle(oracle_id)
+        if record.peer_input.dataset_id != dataset_id:
+            raise PeerDataError(
+                f"oracle {oracle_id!r} belongs to "
+                f"{record.peer_input.dataset_id!r}, not {dataset_id!r}"
+            )
+        return record.peer_input
+    generated = {
+        "sim_500_seed42": (ignatiadis, 500),
+        "dense_500_seed42": (dense_covariate, 500),
+        "sim_5000_seed42": (ignatiadis, 5_000),
+        "sim_50000_seed42": (ignatiadis, 50_000),
+    }
+    if dataset_id in generated:
+        builder, size = generated[dataset_id]
+        draw = builder(size, seed=42, signal_frac=0.15)
+        source = f"generated:{builder.__name__}(n={size}, seed=42, signal_frac=0.15)"
+        return _validated_input(
+            PeerInput(
+                dataset_id=dataset_id,
+                source_path=source,
+                provenance="deterministic synthetic input generated by tools.simulators",
+                size=size,
+                seed=42,
+                pvalues=draw.pvalues,
+                covariates=draw.covariates,
+                truth_labels=draw.is_null,
+            )
+        )
+    if dataset_id == "airway_seed42":
+        return _load_local_airway()
+    raise PeerDataError(f"unknown dataset {dataset_id!r}")
+
+
+def load_oracle(oracle_id: str) -> OracleRecord:
+    """Load one of the two self-contained frozen R comparison records."""
+
+    relative_path = _ORACLE_PATHS.get(oracle_id)
+    if relative_path is None:
+        raise PeerDataError(f"unknown oracle {oracle_id!r}")
+    path = ROOT / relative_path
+    if not path.is_file():
+        raise PeerDataError(f"oracle not found: {relative_path}")
+    try:
+        with np.load(path, allow_pickle=False) as archive:
+            pvalues = _archive_vector(archive, "pvalues", np.float64)
+            size = pvalues.size
+            covariates = _archive_vector(archive, "covariates", np.float64, size)
+            groups = _archive_vector(archive, "groups", np.intp, size)
+            folds = _archive_vector(archive, "folds", np.intp, size)
+            adjusted = _archive_vector(archive, "r_adj_pvalues", np.float64, size)
+            weights = _archive_vector(archive, "r_weights", np.float64, size)
+            lambdas = _oracle_lambdas(archive, folds)
+            rejections = _archive_scalar(archive, "r_rejections", int)
+            metadata_text = _archive_scalar(archive, "meta_json", str)
+    except (OSError, ValueError, KeyError, json.JSONDecodeError) as exc:
+        raise PeerDataError(f"could not read oracle {relative_path}: {exc}") from exc
+    try:
+        metadata_value = json.loads(metadata_text)
+    except json.JSONDecodeError as exc:
+        raise PeerDataError(f"oracle {oracle_id!r} metadata is not valid JSON") from exc
+    if not isinstance(metadata_value, dict):
+        raise PeerDataError(f"oracle {oracle_id!r} metadata must be an object")
+    metadata = {str(key): value for key, value in metadata_value.items()}
+    if metadata.get("case_id") != oracle_id:
+        raise PeerDataError(f"oracle {oracle_id!r} metadata has the wrong case_id")
+    peer_input = _validated_input(
+        PeerInput(
+            dataset_id="sim_5000_seed42",
+            source_path=relative_path.as_posix(),
+            provenance=f"frozen R IHW record {oracle_id}",
+            size=size,
+            seed=42,
+            pvalues=pvalues,
+            covariates=covariates,
+            groups=groups,
+            folds=folds,
+            fold_lambdas=lambdas,
+            oracle_id=oracle_id,
+        )
+    )
+    if np.any(~np.isfinite(adjusted)) or np.any(~np.isfinite(weights)):
+        raise PeerDataError(f"oracle {oracle_id!r} contains nonfinite output")
+    return OracleRecord(peer_input, metadata, rejections, adjusted, weights)
+
+
+def fit(method_id: MethodId, peer_input: PeerInput, config: RunConfig) -> FitResult:
+    """Run one named comparison and validate its normalized output.
+
+    Parameters
+    ----------
+    method_id : str
+        One of the names in ``METHODS``.
+    peer_input : PeerInput
+        Normalized p-values, covariates, and optional frozen partitions.
+    config : RunConfig
+        Shared statistical settings.
+
+    Returns
+    -------
+    FitResult
+        Adjusted p-values, optional weights, rejection count, and version.
+
+    Raises
+    ------
+    PeerUnavailable
+        If an optional runtime, package, or supported API is unavailable.
+    RuntimeError
+        If the comparison runs but fails or returns invalid output.
+    """
+
+    if method_id == "ihwkit_numpy_numba":
+        result = _fit_production(peer_input, config)
+    elif method_id == "ihwkit_numpy":
+        result = _fit_legacy(peer_input, config, backend="numpy")
+    elif method_id == "ihwkit_scipy":
+        result = _fit_legacy(peer_input, config, backend="highs")
+    elif method_id == "pyihw":
+        result = _fit_pyihw(peer_input, config)
+    elif method_id == "r_ihw":
+        result = _fit_r(peer_input, config)
+    else:
+        raise ValueError(f"unknown peer method: {method_id}")
+    _validate_fit(result, peer_input, config.alpha)
+    return result
+
+
+def run_peer(
+    method_id: MethodId,
+    peer_input: PeerInput,
+    config: RunConfig,
+    *,
+    include_arrays: bool = False,
+) -> dict[str, object]:
+    """Run one comparison and return an explicit success or failure record."""
+
+    document: dict[str, object] = {
+        "method_id": method_id,
+        "dataset_id": peer_input.dataset_id,
+        "configuration": config.as_document(),
+        "status": "error",
+        "exit_code": 1,
+        "version": None,
+        "error": None,
+        "rejection_count": None,
+        "weights_available": False,
+    }
+    try:
+        result = fit(method_id, peer_input, config)
+    except PeerUnavailable as exc:
+        document.update(
+            {
+                "status": "unavailable",
+                "exit_code": 3,
+                "error": {"type": type(exc).__name__, "message": str(exc)},
+            }
+        )
+        return document
+    except Exception as exc:  # noqa: BLE001 - peer failures belong in the record
+        document["error"] = {"type": type(exc).__name__, "message": str(exc)}
+        return document
+    document.update(
+        {
+            "status": "ok",
+            "exit_code": 0,
+            "version": result.version,
+            "rejection_count": result.rejection_count,
+            "weights_available": result.weights is not None,
+        }
+    )
+    if include_arrays:
+        document["adjusted_pvalues"] = result.adjusted_pvalues.tolist()
+        if result.weights is not None:
+            document["weights"] = result.weights.tolist()
+    return document
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    """Run the command-line interface for one named comparison."""
+
+    args = _argument_parser().parse_args(argv)
+    config = RunConfig(
+        alpha=args.alpha,
+        nbins=args.nbins,
+        nfolds=args.nfolds,
+        lambda_policy=args.lambda_policy,
+        adjustment_type=args.adjustment_type,
+        seed=args.seed,
+    )
+    try:
+        peer_input = load_peer_input(args.dataset, oracle_id=args.oracle)
+    except PeerDataError as exc:
+        document: dict[str, object] = {
+            "method_id": args.method,
+            "dataset_id": args.dataset,
+            "configuration": config.as_document(),
+            "status": "error",
+            "exit_code": 1,
+            "version": None,
+            "error": {"type": type(exc).__name__, "message": str(exc)},
+            "rejection_count": None,
+            "weights_available": False,
+        }
+    else:
+        document = run_peer(
+            args.method,
+            peer_input,
+            config,
+            include_arrays=args.include_arrays,
+        )
+    _emit(document, args.result, args.quiet)
+    return int(document["exit_code"])
+
+
+def _fit_production(peer_input: PeerInput, config: RunConfig) -> FitResult:
+    if importlib.util.find_spec("numba") is None:
+        raise PeerUnavailable("numba is not installed")
+    from ihw import adjust_ihw
+
+    result = adjust_ihw(
+        peer_input.pvalues,
+        peer_input.covariates,
+        **_ihw_kwargs(peer_input, config),
+    )
+    return _from_ihw_result(result, config.alpha, _version("ihwkit"))
+
+
+def _fit_legacy(
+    peer_input: PeerInput, config: RunConfig, *, backend: Literal["numpy", "highs"]
+) -> FitResult:
+    if backend == "highs" and importlib.util.find_spec("scipy") is None:
+        raise PeerUnavailable("scipy is not installed")
+    from tools import peer_legacy
+
+    kwargs = _ihw_kwargs(peer_input, config)
+    kwargs["lp_backend"] = backend
+    kwargs["use_numba"] = False
+    result = peer_legacy.adjust_ihw(
+        peer_input.pvalues,
+        peer_input.covariates,
+        **kwargs,
+    )
+    version = f"{peer_legacy.__version__}+{backend}"
+    return _from_ihw_result(result, config.alpha, version)
+
+
+def _fit_pyihw(peer_input: PeerInput, config: RunConfig) -> FitResult:
+    if importlib.util.find_spec("pyihw") is None:
+        raise PeerUnavailable("pyihw 0.2.0 is not installed")
+    version = importlib.metadata.version("pyihw")
+    if version != "0.2.0":
+        raise PeerUnavailable(f"pyihw 0.2.0 is supported; found {version}")
+    if peer_input.groups is not None:
+        raise PeerUnavailable("pyihw cannot accept frozen covariate groups")
+    import pyihw
+
+    nfolds = 5 if config.nfolds is None else config.nfolds
+    lambdas: str | FloatArray
+    if config.lambda_policy == "auto":
+        lambdas = "auto"
+    else:
+        lambdas = np.array([np.inf], dtype=np.float64)
+    result = pyihw.ihw(
+        peer_input.pvalues,
+        peer_input.covariates,
+        config.alpha,
+        nbins=config.nbins,
+        nfolds=nfolds,
+        lambdas=lambdas,
+        adjustment_type=config.adjustment_type,
+        folds=peer_input.folds,
+        rng=np.random.default_rng(config.seed),
+    )
+    return _from_ihw_result(result, config.alpha, version)
+
+
+def _fit_r(peer_input: PeerInput, config: RunConfig) -> FitResult:
+    rscript = shutil.which("Rscript")
+    if rscript is None:
+        raise PeerUnavailable("Rscript is not installed")
+    if config.adjustment_type != "bh":
+        raise PeerUnavailable("R IHW comparison supports adjustment_type=bh only")
+    if peer_input.groups is not None or peer_input.folds is not None:
+        raise PeerUnavailable("R IHW comparison cannot accept frozen groups or folds")
+    nfolds = 5 if config.nfolds is None else config.nfolds
+    nbins = (
+        max(1, min(40, peer_input.size // 1500))
+        if config.nbins == "auto"
+        else config.nbins
+    )
+    if not isinstance(nbins, int):
+        raise TypeError("R IHW comparison could not resolve nbins")
+    with tempfile.TemporaryDirectory(prefix="ihwkit_r_peer_") as temporary:
+        directory = Path(temporary)
+        pvalues_path = directory / "pvalues.txt"
+        covariates_path = directory / "covariates.txt"
+        output_prefix = directory / "result"
+        np.savetxt(pvalues_path, peer_input.pvalues, fmt="%.17g")
+        np.savetxt(covariates_path, peer_input.covariates, fmt="%.17g")
+        command = [
+            rscript,
+            "--vanilla",
+            str(R_SCRIPT),
+            "--pvalues",
+            str(pvalues_path),
+            "--covariates",
+            str(covariates_path),
+            "--alpha",
+            str(config.alpha),
+            "--nbins",
+            str(nbins),
+            "--nfolds",
+            str(nfolds),
+            "--lambda-policy",
+            config.lambda_policy,
+            "--seed",
+            str(config.seed),
+            "--output-prefix",
+            str(output_prefix),
+        ]
+        completed = subprocess.run(
+            command,
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        detail = completed.stderr.strip() or completed.stdout.strip()
+        if completed.returncode == 3:
+            raise PeerUnavailable(detail or "R package IHW is unavailable")
+        if completed.returncode != 0:
+            raise RuntimeError(detail or "R IHW comparison failed")
+        adjusted = _read_vector(output_prefix.with_suffix(".adj.txt"))
+        weights = _read_vector(output_prefix.with_suffix(".weights.txt"))
+        rejection_count = int(
+            output_prefix.with_suffix(".rejections.txt").read_text(encoding="utf-8")
+        )
+        version = (
+            output_prefix.with_suffix(".version.txt")
+            .read_text(encoding="utf-8")
+            .strip()
+        )
+    if not version:
+        raise RuntimeError("R IHW comparison did not report its package version")
+    return FitResult(adjusted, weights, rejection_count, version)
+
+
+def _ihw_kwargs(peer_input: PeerInput, config: RunConfig) -> dict[str, object]:
+    if config.nfolds is not None:
+        nfolds = config.nfolds
+    elif peer_input.folds is not None:
+        nfolds = int(np.max(peer_input.folds)) + 1
+    else:
+        nfolds = 5
+    kwargs: dict[str, object] = {
+        "alpha": config.alpha,
+        "nbins": config.nbins,
+        "nfolds": nfolds,
+        "lambdas": None if config.lambda_policy == "inf" else "auto",
+        "adjustment_type": config.adjustment_type,
+        "seed": config.seed,
+    }
+    if peer_input.groups is not None:
+        kwargs["groups"] = peer_input.groups
+    if peer_input.folds is not None:
+        kwargs["folds"] = peer_input.folds
+    if peer_input.fold_lambdas is not None:
+        kwargs["fold_lambdas"] = peer_input.fold_lambdas
+    return kwargs
+
+
+def _from_ihw_result(result: object, alpha: float, version: str) -> FitResult:
+    adjusted_value = getattr(result, "adj_pvalues", None)
+    weights_value = getattr(result, "weights", None)
+    if adjusted_value is None:
+        raise RuntimeError("comparison result has no adj_pvalues")
+    adjusted = np.asarray(adjusted_value, dtype=np.float64)
+    weights = (
+        None if weights_value is None else np.asarray(weights_value, dtype=np.float64)
+    )
+    return FitResult(
+        adjusted,
+        weights,
+        int(np.sum(adjusted <= alpha)),
+        version,
+    )
+
+
+def _validate_fit(result: FitResult, peer_input: PeerInput, alpha: float) -> None:
+    adjusted = result.adjusted_pvalues
+    if adjusted.shape != (peer_input.size,):
+        raise RuntimeError(
+            f"adjusted p-values must have shape ({peer_input.size},), got {adjusted.shape}"
+        )
+    if np.any(~np.isfinite(adjusted)) or np.any((adjusted < 0.0) | (adjusted > 1.0)):
+        raise RuntimeError("adjusted p-values must be finite and lie in [0, 1]")
+    if result.rejection_count != int(np.sum(adjusted <= alpha)):
+        raise RuntimeError("rejection count does not match adjusted p-values")
+    if result.weights is None:
+        return
+    if result.weights.shape != (peer_input.size,):
+        raise RuntimeError(
+            f"weights must have shape ({peer_input.size},), got {result.weights.shape}"
+        )
+    if np.any(~np.isfinite(result.weights)) or np.any(result.weights < 0.0):
+        raise RuntimeError("weights must be finite and nonnegative")
+
+
+def _load_local_airway() -> PeerInput:
+    relative_path = Path("data/fixtures/airway_seed42.npz")
+    path = ROOT / relative_path
+    if not path.is_file():
+        raise PeerDataError(
+            "local airway data is unavailable; provenance and licensing are unresolved"
+        )
+    try:
+        with np.load(path, allow_pickle=False) as archive:
+            pvalues = _archive_vector(archive, "pvalues", np.float64)
+            covariates = _archive_vector(
+                archive, "covariates", np.float64, pvalues.size
+            )
+    except (OSError, ValueError, KeyError) as exc:
+        raise PeerDataError(f"could not read local airway data: {exc}") from exc
+    return _validated_input(
+        PeerInput(
+            dataset_id="airway_seed42",
+            source_path=relative_path.as_posix(),
+            provenance="local airway-derived copy with unresolved provenance and licensing",
+            size=pvalues.size,
+            seed=42,
+            pvalues=pvalues,
+            covariates=covariates,
+        )
+    )
+
+
+def _validated_input(peer_input: PeerInput) -> PeerInput:
+    size = peer_input.size
+    if peer_input.pvalues.shape != (size,):
+        raise PeerDataError(f"pvalues must have shape ({size},)")
+    if peer_input.covariates.shape != (size,):
+        raise PeerDataError(f"covariates must have shape ({size},)")
+    if np.any(~np.isfinite(peer_input.pvalues)) or np.any(
+        (peer_input.pvalues < 0.0) | (peer_input.pvalues > 1.0)
+    ):
+        raise PeerDataError("pvalues must be finite and lie in [0, 1]")
+    if np.any(~np.isfinite(peer_input.covariates)):
+        raise PeerDataError("covariates must be finite")
+    if peer_input.truth_labels is not None and peer_input.truth_labels.shape != (size,):
+        raise PeerDataError(f"truth_labels must have shape ({size},)")
+    for name, labels in (
+        ("groups", peer_input.groups),
+        ("folds", peer_input.folds),
+    ):
+        if labels is None:
+            continue
+        if labels.shape != (size,):
+            raise PeerDataError(f"{name} must have shape ({size},)")
+        unique = np.unique(labels)
+        if not np.array_equal(unique, np.arange(unique.size, dtype=np.intp)):
+            raise PeerDataError(f"{name} labels must be contiguous from zero")
+    return peer_input
+
+
+def _archive_vector(
+    archive: np.lib.npyio.NpzFile,
+    key: str,
+    dtype: type[np.float64 | np.intp],
+    size: int | None = None,
+) -> FloatArray | IntegerArray:
+    value = archive[key]
+    array = np.asarray(value, dtype=dtype)
+    expected_size = array.size if size is None else size
+    if array.ndim != 1 or array.shape != (expected_size,):
+        raise PeerDataError(f"{key} must have shape ({expected_size},)")
+    return array.copy()
+
+
+def _archive_scalar(
+    archive: np.lib.npyio.NpzFile, key: str, target: type[int | str]
+) -> int | str:
+    value = np.asarray(archive[key])
+    if value.ndim != 0:
+        raise PeerDataError(f"{key} must be scalar")
+    return target(value.item())
+
+
+def _oracle_lambdas(archive: np.lib.npyio.NpzFile, folds: IntegerArray) -> FloatArray:
+    nfolds = int(np.max(folds)) + 1
+    value = np.asarray(archive["fold_lambdas"], dtype=np.float64)
+    if value.ndim == 0 and (np.isnan(value.item()) or np.isinf(value.item())):
+        return np.full(nfolds, np.inf, dtype=np.float64)
+    if value.ndim == 1 and value.shape == (nfolds,) and np.all(np.isnan(value)):
+        return np.full(nfolds, np.inf, dtype=np.float64)
+    if value.ndim != 1 or value.shape != (nfolds,):
+        raise PeerDataError(f"fold_lambdas must have shape ({nfolds},)")
+    if np.any(np.isnan(value)) or np.any(value < 0.0):
+        raise PeerDataError("fold_lambdas must be nonnegative and not NaN")
+    return value.copy()
+
+
+def _version(package: str) -> str:
+    try:
+        return importlib.metadata.version(package)
+    except importlib.metadata.PackageNotFoundError:
+        return "working tree"
+
+
+def _read_vector(path: Path) -> FloatArray:
+    return np.atleast_1d(np.loadtxt(path, dtype=np.float64))
+
+
+def _argument_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--method", required=True, choices=METHODS)
+    parser.add_argument("--dataset", required=True)
+    parser.add_argument("--oracle")
+    parser.add_argument("--alpha", type=float, default=0.1)
+    parser.add_argument("--nbins", type=_parse_nbins, default="auto")
+    parser.add_argument("--nfolds", type=int)
+    parser.add_argument("--lambda-policy", choices=("inf", "auto"), default="inf")
+    parser.add_argument("--adjustment-type", choices=("bh", "bonferroni"), default="bh")
+    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--include-arrays", action="store_true")
+    parser.add_argument("--result", type=Path)
+    parser.add_argument("--quiet", action="store_true")
+    return parser
+
+
+def _parse_nbins(value: str) -> int | str:
+    if value == "auto":
+        return value
+    parsed = int(value)
+    if parsed <= 0:
+        raise argparse.ArgumentTypeError("nbins must be positive")
+    return parsed
+
+
+def _emit(document: dict[str, object], path: Path | None, quiet: bool) -> None:
+    text = json.dumps(document, sort_keys=True, allow_nan=False)
+    if path is None:
+        if not quiet:
+            print(text)
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text + "\n", encoding="utf-8")
+    if not quiet:
+        print(f"{document['method_id']} status={document['status']} result={path}")
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

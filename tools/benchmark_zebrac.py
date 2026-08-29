@@ -1,10 +1,11 @@
-"""Run reproducible zebrac measurements over tool-owned peer adapters."""
+"""Run reproducible zebrac measurements through the unified peer command."""
 
 from __future__ import annotations
 
 import argparse
 import json
 import shlex
+import shutil
 import subprocess
 import sys
 from collections.abc import Sequence
@@ -14,18 +15,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from tools.data_contract import DataContractError, PeerInput, load_peer_input
+from tools.peer import METHODS, PeerDataError, PeerInput, load_peer_input
 
-ZEBRAC = Path("/home/eke/bin/zebrac")
-METHOD_SCRIPTS: dict[str, str] = {
-    "ihwkit_numpy_numba": "tools/peers/ihwkit_numpy_numba.py",
-    "ihwkit_numpy": "tools/peers/ihwkit_numpy.py",
-    "ihwkit_scipy": "tools/peers/ihwkit_scipy.py",
-    "pyihw": "tools/peers/pyihw.py",
-    "r_ihw": "tools/peers/r_ihw.py",
-    "julia_ihw": "tools/peers/julia_ihw.py",
-}
-DEFAULT_METHODS = tuple(METHOD_SCRIPTS)
+PEER_SCRIPT = ROOT / "tools" / "peer.py"
+DEFAULT_METHODS = METHODS
 METRIC_FIELDS = (
     "wall_time",
     "peak_rss",
@@ -48,9 +41,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     result_dir = (ROOT / args.result_dir).resolve()
     _ensure_result_dir(result_dir)
     try:
-        peer_input = load_peer_input(args.dataset, oracle_id=args.oracle, root=ROOT)
-    except DataContractError as exc:
-        print(f"data contract error: {exc}", file=sys.stderr)
+        peer_input = load_peer_input(args.dataset, oracle_id=args.oracle)
+    except PeerDataError as exc:
+        print(f"peer data error: {exc}", file=sys.stderr)
         return 2
     methods = tuple(args.methods)
     preflight_documents: dict[str, dict[str, object]] = {}
@@ -68,7 +61,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             peer_input,
             preflight_documents,
             None,
-            "production adapter is unavailable or failed its preflight",
+            "production method is unavailable or failed its preflight",
         )
         return 1
     zebrac_info = _available_zebrac()
@@ -85,7 +78,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     zebrac_path, zebrac_version = zebrac_info
     raw_path = result_dir / f"{args.name}.zebrac.json"
     command_strings = [
-        _adapter_command(method_id, args) for method_id in available_methods
+        _peer_command(method_id, args) for method_id in available_methods
     ]
     zebrac_command = [
         str(zebrac_path),
@@ -120,6 +113,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         raw_document,
         None if completed.returncode == 0 else _process_detail(completed),
         zebrac_version,
+        zebrac_path,
     )
     if not args.quiet:
         output = completed.stdout.strip()
@@ -134,12 +128,14 @@ def main(argv: Sequence[str] | None = None) -> int:
 def _run_preflight(
     method_id: str, args: argparse.Namespace, result_path: Path
 ) -> dict[str, object]:
-    """Run one adapter outside zebrac and return its result document."""
+    """Run one method outside zebrac and return its result document."""
 
     result_path.unlink(missing_ok=True)
     command = [
         sys.executable,
-        str(ROOT / METHOD_SCRIPTS[method_id]),
+        str(PEER_SCRIPT),
+        "--method",
+        method_id,
         "--dataset",
         args.dataset,
         "--alpha",
@@ -171,7 +167,6 @@ def _run_preflight(
         document = _read_json(result_path)
     else:
         document = {
-            "schema_version": "peer-result-1",
             "method_id": method_id,
             "dataset_id": args.dataset,
             "status": "error",
@@ -184,12 +179,14 @@ def _run_preflight(
     return document
 
 
-def _adapter_command(method_id: str, args: argparse.Namespace) -> str:
+def _peer_command(method_id: str, args: argparse.Namespace) -> str:
     """Build one direct command string accepted by zebrac."""
 
     tokens = [
         sys.executable,
-        str(ROOT / METHOD_SCRIPTS[method_id]),
+        str(PEER_SCRIPT),
+        "--method",
+        method_id,
         "--dataset",
         args.dataset,
         "--alpha",
@@ -212,10 +209,12 @@ def _adapter_command(method_id: str, args: argparse.Namespace) -> str:
 
 
 def _available_zebrac() -> tuple[Path, str] | None:
-    if not ZEBRAC.is_file():
+    executable = shutil.which("zebrac")
+    if executable is None:
         return None
+    path = Path(executable).resolve()
     completed = subprocess.run(
-        [str(ZEBRAC), "--version"],
+        [str(path), "--version"],
         capture_output=True,
         text=True,
         check=False,
@@ -223,7 +222,7 @@ def _available_zebrac() -> tuple[Path, str] | None:
     version = completed.stdout.strip()
     if completed.returncode != 0 or not version:
         return None
-    return ZEBRAC, version
+    return path, version
 
 
 def _write_metadata(
@@ -234,15 +233,16 @@ def _write_metadata(
     raw_document: dict[str, object] | None,
     error: str | None,
     zebrac_version: str | None = None,
+    zebrac_path: Path | None = None,
 ) -> None:
-    """Write metadata tying adapter records to raw zebrac metrics."""
+    """Write metadata tying peer records to raw zebrac metrics."""
 
     dataset_id = peer_input.dataset_id
     methods: dict[str, object] = {}
     for method_id, document in preflight_documents.items():
         methods[method_id] = {
             "status": document.get("status"),
-            "implementation_version": document.get("implementation_version"),
+            "version": document.get("version"),
             "exit_code": document.get("exit_code"),
             "error": document.get("error"),
             "rejection_count": document.get("rejection_count"),
@@ -264,7 +264,6 @@ def _write_metadata(
                         },
                     }
     document: dict[str, object] = {
-        "schema_version": "zebrac-result-1",
         "recorded_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "measurement_scope": "process_startup_and_algorithm",
         "dataset_id": dataset_id,
@@ -288,7 +287,7 @@ def _write_metadata(
             "duration_ms": args.duration,
         },
         "zebrac": {
-            "path": str(ZEBRAC),
+            "path": None if zebrac_path is None else str(zebrac_path),
             "version": zebrac_version,
         },
         "methods": methods,
@@ -296,7 +295,9 @@ def _write_metadata(
     }
     if raw_document is not None:
         document["zebrac_raw"] = raw_document
-    path.write_text(json.dumps(document, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    path.write_text(
+        json.dumps(document, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
 
 
 def _argument_parser() -> argparse.ArgumentParser:
@@ -307,9 +308,7 @@ def _argument_parser() -> argparse.ArgumentParser:
     parser.add_argument("--nbins", default="auto")
     parser.add_argument("--nfolds", type=int)
     parser.add_argument("--lambda-policy", choices=("inf", "auto"), default="inf")
-    parser.add_argument(
-        "--adjustment-type", choices=("bh", "bonferroni"), default="bh"
-    )
+    parser.add_argument("--adjustment-type", choices=("bh", "bonferroni"), default="bh")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--duration", type=int, default=5000)
     parser.add_argument("--warmup", type=int, default=3)
@@ -320,7 +319,7 @@ def _argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--methods",
         nargs="+",
-        choices=tuple(METHOD_SCRIPTS),
+        choices=METHODS,
         default=DEFAULT_METHODS,
     )
     parser.add_argument("--quiet", action="store_true")
@@ -354,9 +353,13 @@ def _process_detail(completed: subprocess.CompletedProcess[str]) -> str:
 def _method_from_command(command: object) -> str | None:
     if not isinstance(command, str):
         return None
-    for method_id in METHOD_SCRIPTS:
-        if f"/{method_id}.py" in command:
-            return method_id
+    try:
+        tokens = shlex.split(command)
+        index = tokens.index("--method")
+    except (ValueError, IndexError):
+        return None
+    if index + 1 < len(tokens) and tokens[index + 1] in METHODS:
+        return tokens[index + 1]
     return None
 
 

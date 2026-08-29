@@ -12,8 +12,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "src"))
 
 from ihw import _p_adjust, _safe_divide, adjust_ihw
-from tools.data_contract import load_oracle
-from tools.parity_cases import ParityCase, available_r_gold_cases
+from tools.peer import ORACLE_IDS, load_oracle
 
 RESULTS_DIR = ROOT / "tmp" / "results"
 ATOL = 1e-8
@@ -44,13 +43,13 @@ def _allclose(a: np.ndarray, b: np.ndarray) -> bool:
     return bool(np.allclose(a, b, atol=ATOL, rtol=RTOL))
 
 
-def replay_case(case: ParityCase) -> ReplayRow:
+def replay_case(oracle_id: str) -> ReplayRow:
     """Replay one frozen R oracle through the production implementation."""
 
-    record = load_oracle(case.oracle_id, root=ROOT)
+    record = load_oracle(oracle_id)
     peer_input = record.peer_input
     if peer_input.groups is None or peer_input.folds is None:
-        raise RuntimeError(f"oracle {case.oracle_id!r} has no frozen partition")
+        raise RuntimeError(f"oracle {oracle_id!r} has no frozen partition")
     nbins = int(np.max(peer_input.groups)) + 1
     nfolds = int(np.max(peer_input.folds)) + 1
     replay_kwargs: dict[str, object] = {
@@ -80,7 +79,7 @@ def replay_case(case: ParityCase) -> ReplayRow:
         )
 
         return ReplayRow(
-            case_id=case.case_id,
+            case_id=oracle_id,
             r_rejections=r_rej,
             production_rejections=production_rej,
             production_delta=production_rej - r_rej,
@@ -92,7 +91,7 @@ def replay_case(case: ParityCase) -> ReplayRow:
         )
     except Exception as exc:  # noqa: BLE001 - replay must record every fit failure
         return ReplayRow(
-            case_id=case.case_id,
+            case_id=oracle_id,
             r_rejections=r_rej,
             production_rejections=-1,
             production_delta=0,
@@ -125,7 +124,9 @@ def _write_markdown(rows: list[ReplayRow], path: Path) -> None:
     ]
     for row in rows:
         if row.error:
-            lines.append(f"| {row.case_id} | {row.r_rejections} | err |  |  | no | no |")
+            lines.append(
+                f"| {row.case_id} | {row.r_rejections} | err |  |  | no | no |"
+            )
             continue
         lines.append(
             f"| {row.case_id} | {row.r_rejections} | {row.production_rejections} | "
@@ -138,16 +139,12 @@ def _write_markdown(rows: list[ReplayRow], path: Path) -> None:
 
 
 def main() -> int:
-    """Replay all available frozen R oracle cases."""
+    """Replay both frozen R oracle cases."""
 
-    cases = available_r_gold_cases()
-    if not cases:
-        print("no frozen R gold cases on disk")
-        return 2
     rows: list[ReplayRow] = []
-    for case in cases:
-        print(f"replay {case.case_id}...")
-        row = replay_case(case)
+    for oracle_id in ORACLE_IDS:
+        print(f"replay {oracle_id}...")
+        row = replay_case(oracle_id)
         rows.append(row)
         if row.error:
             print(f"  ERR {row.error}")
@@ -168,9 +165,7 @@ def main() -> int:
             1 for r in rows if r.production_ok and r.bh_oracle_ok and r.error is None
         ),
         "fail": sum(
-            1
-            for r in rows
-            if not (r.production_ok and r.bh_oracle_ok) or r.error
+            1 for r in rows if not (r.production_ok and r.bh_oracle_ok) or r.error
         ),
     }
     json_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")

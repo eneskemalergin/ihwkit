@@ -120,10 +120,29 @@ def ignatiadis(n: int, *, seed: int = 0, signal_frac: float = 0.12) -> SimDraw:
     )
 
 
+def dense_covariate(n: int, *, seed: int = 0, signal_frac: float = 0.15) -> SimDraw:
+    """Generate a wide log-normal covariate with stronger high-end signals."""
+
+    rng = np.random.default_rng(seed)
+    cov = np.exp(rng.normal(5.0, 2.0, size=n))
+    signals = rng.binomial(1, signal_frac, size=n).astype(np.bool_)
+    effect = np.log1p(cov) / 2.0
+    z = rng.normal(loc=signals * effect)
+    p = _normal_survival(z)
+    return SimDraw(
+        pvalues=p.astype(np.float64),
+        covariates=cov.astype(np.float64),
+        is_null=~signals,
+        scenario="dense_covariate",
+        seed=seed,
+    )
+
+
 SCENARIO_BUILDERS: dict[str, Callable[[int, int], SimDraw]] = {
     "global_null": lambda n, seed: global_null(n, seed=seed),
     "null_covariate": lambda n, seed: null_with_covariate(n, seed=seed),
     "mixture_mild": lambda n, seed: mixture(n, pi0=0.9, seed=seed),
     "mixture_sparse": lambda n, seed: mixture(n, pi0=0.95, seed=seed),
     "ignatiadis": lambda n, seed: ignatiadis(n, seed=seed),
+    "dense_covariate": lambda n, seed: dense_covariate(n, seed=seed),
 }

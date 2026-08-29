@@ -3,7 +3,7 @@
 args <- commandArgs(trailingOnly = TRUE)
 file_args <- commandArgs(trailingOnly = FALSE)
 file_arg <- sub("^--file=", "", grep("^--file=", file_args, value = TRUE))
-root <- normalizePath(file.path(dirname(file_arg[[1]]), "..", ".."))
+root <- normalizePath(file.path(dirname(file_arg[[1]]), ".."))
 renv_ihw <- Sys.glob(file.path(root, "renv", "library", "*", "*", "*", "IHW"))
 if (length(renv_ihw) >= 1L) {
   .libPaths(c(dirname(renv_ihw[[1]]), .libPaths()))

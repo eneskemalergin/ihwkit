@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import subprocess
 import sys
 from collections.abc import Sequence
 from datetime import UTC, datetime
@@ -16,28 +15,18 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "src"))
 
-from tools.data_contract import (
-    DataContractError,
+from tools.peer import (
+    COMPARISON_METHODS,
+    FitResult,
+    PeerDataError,
     PeerInput,
+    RunConfig,
+    fit,
     load_oracle,
     load_peer_input,
+    run_peer,
 )
-from tools.peers.ihwkit_numpy_numba import fit as production_fit
-from tools.peers.runner import FitResult, RunConfig
 
-METHOD_SCRIPTS = {
-    "ihwkit_numpy_numba": "tools/peers/ihwkit_numpy_numba.py",
-    "ihwkit_numpy": "tools/peers/ihwkit_numpy.py",
-    "ihwkit_scipy": "tools/peers/ihwkit_scipy.py",
-    "pyihw": "tools/peers/pyihw.py",
-    "r_ihw": "tools/peers/r_ihw.py",
-    "julia_ihw": "tools/peers/julia_ihw.py",
-}
-COMPARISON_METHOD_SCRIPTS = {
-    method_id: path
-    for method_id, path in METHOD_SCRIPTS.items()
-    if method_id != "ihwkit_numpy_numba"
-}
 ATOL = 1e-8
 RTOL = 1e-6
 
@@ -71,12 +60,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     auto_row["case_id"] = "sim_5000_auto_native"
     rows.append(auto_row)
     passed = passed and auto_row["status"] == "ok"
-    peer_rows = _peer_availability(args, result_dir)
+    peer_rows = _peer_availability(args)
     rows.extend(peer_rows)
     airway_row = _airway_diagnostic()
     rows.append(airway_row)
     output = {
-        "schema_version": "peer-correctness-1",
         "recorded_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "tolerances": {"atol": ATOL, "rtol": RTOL},
         "synthetic_gate": passed,
@@ -101,7 +89,7 @@ def _production_gate(
     peer_input = load_peer_input(dataset_id)
     config = _config(nfolds, lambda_policy)
     try:
-        result = production_fit(peer_input, config)
+        result = fit("ihwkit_numpy_numba", peer_input, config)
         _validate_fit(result, peer_input)
     except Exception as exc:  # noqa: BLE001 - a gate records every fit failure
         return {
@@ -127,9 +115,9 @@ def _oracle_gate(oracle_id: str) -> dict[str, object]:
     record = load_oracle(oracle_id)
     peer_input = record.peer_input
     nfolds = int(np.max(peer_input.folds)) + 1 if peer_input.folds is not None else 1
-    config = _config(nfolds, "inf", oracle_id)
+    config = _config(nfolds, "inf")
     try:
-        result = production_fit(peer_input, config)
+        result = fit("ihwkit_numpy_numba", peer_input, config)
         _validate_fit(result, peer_input)
         adjusted_delta = _max_abs(result.adjusted_pvalues, record.adjusted_pvalues)
         weights_delta = _max_abs(result.weights, record.weights)
@@ -174,71 +162,42 @@ def _oracle_gate(oracle_id: str) -> dict[str, object]:
         }
 
 
-def _peer_availability(
-    args: argparse.Namespace, result_dir: Path
-) -> list[dict[str, object]]:
-    """Record explicit status for comparison adapters.
-
-    The production adapter is covered by the direct synthetic gates above.
-    Running its subprocess adapter here would execute the same production
-    path a second time without adding an independent check.
-    """
+def _peer_availability(args: argparse.Namespace) -> list[dict[str, object]]:
+    """Record explicit status for each comparison method."""
 
     rows: list[dict[str, object]] = []
-    for method_id, script in COMPARISON_METHOD_SCRIPTS.items():
-        path = result_dir / f"peer_correctness.{method_id}.json"
-        path.unlink(missing_ok=True)
-        command = [
-            sys.executable,
-            str(ROOT / script),
-            "--dataset",
-            args.availability_dataset,
-            "--nbins",
-            "auto",
-            "--nfolds",
-            "1",
-            "--lambda-policy",
-            "inf",
-            "--seed",
-            "42",
-            "--result",
-            str(path),
-            "--quiet",
-        ]
-        completed = subprocess.run(
-            command,
-            cwd=ROOT,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        if path.is_file():
-            document = json.loads(path.read_text(encoding="utf-8"))
-            rows.append(
-                {
-                    "case_id": "peer_availability",
-                    "method_id": method_id,
-                    "dataset_id": args.availability_dataset,
-                    "status": document.get("status"),
-                    "exit_code": document.get("exit_code"),
-                    "implementation_version": document.get("implementation_version"),
-                    "error": document.get("error"),
-                }
-            )
-        else:
+    try:
+        peer_input = load_peer_input(args.availability_dataset)
+    except PeerDataError as exc:
+        for method_id in COMPARISON_METHODS:
             rows.append(
                 {
                     "case_id": "peer_availability",
                     "method_id": method_id,
                     "dataset_id": args.availability_dataset,
                     "status": "error",
-                    "exit_code": completed.returncode,
+                    "exit_code": 1,
                     "error": {
-                        "type": "MissingResultRecord",
-                        "message": completed.stderr.strip() or "adapter failed before output",
+                        "type": type(exc).__name__,
+                        "message": str(exc),
                     },
                 }
             )
+        return rows
+    config = _config(1, "inf")
+    for method_id in COMPARISON_METHODS:
+        document = run_peer(method_id, peer_input, config)
+        rows.append(
+            {
+                "case_id": "peer_availability",
+                "method_id": method_id,
+                "dataset_id": args.availability_dataset,
+                "status": document["status"],
+                "exit_code": document["exit_code"],
+                "version": document["version"],
+                "error": document["error"],
+            }
+        )
     return rows
 
 
@@ -247,7 +206,7 @@ def _airway_diagnostic() -> dict[str, object]:
 
     try:
         peer_input = load_peer_input("airway_seed42")
-    except DataContractError as exc:
+    except PeerDataError as exc:
         return {
             "case_id": "airway_local_diagnostic",
             "dataset_id": "airway_seed42",
@@ -263,7 +222,7 @@ def _airway_diagnostic() -> dict[str, object]:
     }
     for nfolds in (1, 5):
         try:
-            result = production_fit(peer_input, _config(nfolds, "inf"))
+            result = fit("ihwkit_numpy_numba", peer_input, _config(nfolds, "inf"))
             _validate_fit(result, peer_input)
             row[f"nfolds_{nfolds}"] = {
                 "status": "ok",
@@ -278,9 +237,7 @@ def _airway_diagnostic() -> dict[str, object]:
     return row
 
 
-def _config(
-    nfolds: int, lambda_policy: str, oracle_id: str | None = None
-) -> RunConfig:
+def _config(nfolds: int, lambda_policy: str) -> RunConfig:
     return RunConfig(
         alpha=0.1,
         nbins="auto",
@@ -288,8 +245,6 @@ def _config(
         lambda_policy="auto" if lambda_policy == "auto" else "inf",
         adjustment_type="bh",
         seed=42,
-        oracle_id=oracle_id,
-        include_arrays=False,
     )
 
 

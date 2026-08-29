@@ -1,53 +1,43 @@
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 
 import numpy as np
 
-from tools.variants import MethodVariant, run_variant
+from ihw import adjust_ihw
 
 
 @dataclass(frozen=True)
 class RecommendedMode:
-    """Describe one local mode and its optional frozen parity case."""
+    """Describe one local diagnostic configuration."""
 
     mode_id: str
     label: str
-    variant: MethodVariant
     nfolds: int
-    lambdas: str
-    parity_case: str | None = None
+    lambdas: np.ndarray | None
+    nfolds_internal: int = 5
 
 
 RECOMMENDED_MODES: tuple[RecommendedMode, ...] = (
     RecommendedMode(
         "ihw_inf_fast",
         "lambda=inf, nfolds=1",
-        MethodVariant("ihw_inf_fast", 1, None),
         1,
-        "inf",
-        "sim_5000_inf_n1",
+        None,
     ),
     RecommendedMode(
         "ihw_inf_cv",
         "lambda=inf, nfolds=5",
-        MethodVariant("ihw_inf_cv", 5, None),
         5,
-        "inf",
-        "sim_5000_inf_n5",
+        None,
     ),
     RecommendedMode(
         "ihw_auto_fastgrid",
         "lambda in {0, inf}, inner folds=3",
-        MethodVariant(
-            "ihw_auto_fastgrid",
-            5,
-            np.array([0.0, np.inf], dtype=np.float64),
-            nfolds_internal=3,
-        ),
         5,
-        "fastgrid",
-        None,
+        np.array([0.0, np.inf], dtype=np.float64),
+        3,
     ),
 )
 
@@ -62,5 +52,14 @@ def run_mode(
 ) -> tuple[int, float]:
     """Run one recommended mode and return rejections and elapsed seconds."""
 
-    adj, wall, diag = run_variant(mode.variant, p, cov, alpha=alpha, seed=seed)
-    return int(diag.get("rejections", int(np.sum(adj <= alpha)))), wall
+    started = time.perf_counter()
+    result = adjust_ihw(
+        p,
+        cov,
+        alpha,
+        nfolds=mode.nfolds,
+        nfolds_internal=mode.nfolds_internal,
+        lambdas=mode.lambdas,
+        seed=seed,
+    )
+    return int(np.sum(result.adj_pvalues <= alpha)), time.perf_counter() - started

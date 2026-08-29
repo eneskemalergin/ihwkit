@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "src"))
 
-from tools.parity_cases import available_r_gold_cases
+from tools.peer import ORACLE_IDS
 from tools.recommended_modes import RECOMMENDED_MODES, run_mode
 from tools.replay_parity import replay_case
 from tools.simulators import global_null
@@ -50,8 +50,8 @@ def _check_replay() -> list[dict[str, object]]:
     """Run the frozen-oracle replay checks."""
 
     rows: list[dict[str, object]] = []
-    for case in available_r_gold_cases():
-        row = replay_case(case)
+    for oracle_id in ORACLE_IDS:
+        row = replay_case(oracle_id)
         rows.append(
             {
                 "case_id": row.case_id,
@@ -75,7 +75,9 @@ def _check_null_smoke(n: int = 3000, reps: int = 8) -> dict[str, object]:
     rates: list[float] = []
     for rep in range(reps):
         draw = global_null(n, seed=7000 + rep)
-        rej, _ = run_mode(mode, draw.pvalues, draw.covariates, alpha=ALPHA, seed=7000 + rep)
+        rej, _ = run_mode(
+            mode, draw.pvalues, draw.covariates, alpha=ALPHA, seed=7000 + rep
+        )
         rates.append(rej / n)
     max_rej_rate = float(np.max(rates))
     return {

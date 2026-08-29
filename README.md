@@ -34,18 +34,23 @@ The default fit uses five outer folds and infinite lambda, so no inner lambda se
 
 The public function has no solver or JIT switches. `lp_backend` and `use_numba` are not accepted parameters.
 
-## Data and peer methods
+## Peer comparisons
 
-`data/manifest.json` records fixture paths, sizes, seeds, provenance, and release eligibility. The development loader is `tools/data_contract.py`; it normalizes `pvalues` and `covariates` to one-dimensional float64 arrays and validates optional frozen groups, folds, and lambda values.
+`tools/peer.py` is the single local interface for comparison methods. Ordinary synthetic inputs are generated from readable names, sizes, and seeds. The only stored comparison data are two self-contained R records under `tools/fixtures/`, containing the exact inputs, partitions, and outputs used by frozen parity replay.
 
-The comparison implementations are tool-owned and are not part of the installable API:
+The supported comparison methods are tool-owned and are not part of the installable API:
 
 - **`ihwkit_numpy_numba`:** the production library path.
 - **`ihwkit_numpy`:** a pinned pre-transition dense NumPy simplex baseline.
 - **`ihwkit_scipy`:** a pinned pre-transition SciPy HiGHS baseline.
-- **`pyihw`:** an adapter for the public pyihw package, reported unavailable when the package or supported API is absent.
-- **`r_ihw`:** an adapter for native R IHW.
-- **`julia_ihw`:** an adapter for the preliminary Julia package, reported unavailable when Julia or the package is absent.
+- **`pyihw`:** the reviewed public `pyihw` 0.2.0 API, using its `rng` and lambda conventions explicitly.
+- **`r_ihw`:** native R IHW, with the installed IHW version read from the completed run.
+
+Run one method directly with:
+
+```bash
+python tools/peer.py --method ihwkit_numpy_numba --dataset sim_5000_seed42
+```
 
 Run a correctness and availability gate with:
 
@@ -59,7 +64,7 @@ Airway files are local diagnostics only. Their provenance and licensing are unre
 
 ## Benchmarks
 
-`/home/eke/bin/zebrac` version 0.6.2 is the selected Linux benchmark binary. Benchmark metadata records its path, reported version, date, command, and runtime details.
+Install [`zebrac`](https://github.com/eneskemalergin/zebrac) and make the executable available on `PATH`. The benchmark runner records the resolved executable path, reported version, date, command, and runtime details for each local result.
 
 Run a small process-level comparison with:
 
@@ -67,7 +72,7 @@ Run a small process-level comparison with:
 python tools/benchmark_zebrac.py --dataset sim_5000_seed42 --duration 5000 --warmup 3 --min-samples 10 --max-samples 10
 ```
 
-The production command runs first, followed by available peer adapters. Raw zebrac JSON and adapter metadata are written under ignored `tmp/results/`. The measurement includes process startup, fixture loading, and any JIT initialization performed by an adapter. Keep cold process measurements separate from any future warmed algorithm measurement.
+The production command runs first, followed by available peer methods. Raw zebrac JSON and readable comparison metadata are written under ignored `tmp/results/`. The measurement includes process startup, input generation or loading, and any JIT initialization performed by a method. Keep cold process measurements separate from any future warmed algorithm measurement.
 
 ## Development
 
@@ -77,10 +82,10 @@ Run package-only tests with a temporary pytest runner when pytest is not install
 uv run --no-project --with pytest --with numpy --with numba pytest -q tests
 ```
 
-Run the repository-wide gate, including tool-owned data and adapter checks, with:
+Run the repository-wide gate, including generated inputs, frozen R replay, and peer checks, with:
 
 ```bash
 uv run --no-project --with pytest --with numpy --with numba pytest -q
 ```
 
-`tests/` contains tests for the installable `ihw` package only. The repository-wide test command also collects tool-owned checks under `tools/tests/`. `tools/` contains local utilities, statistical evidence workflows, data-contract code, and peer adapters. `data/` owns fixtures and oracle records. The installable module remains `src/ihw.py`.
+`tests/` contains tests for the installable `ihw` package only. The repository-wide test command also collects the consolidated peer checks under `tools/tests/`. `tools/` contains local utilities, simulations, the peer interface, frozen R records, and statistical evidence workflows. Ignored `data/` is only for local diagnostics such as airway. The installable module remains `src/ihw.py`.
