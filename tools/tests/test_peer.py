@@ -12,10 +12,16 @@ from pathlib import Path
 import numpy as np
 
 from ihw import IHWResult, _p_adjust, _safe_divide, adjust_ihw
-from tools.peer import OracleRecord, load_oracle, load_peer_input
+from tools.peer import (
+    PARITY_GATE_IDS,
+    REFERENCE_IDS,
+    ReferenceRecord,
+    _r_output_fold_count,
+    load_peer_input,
+    load_reference,
+)
 
 ROOT = Path(__file__).resolve().parents[2]
-ORACLE_IDS = ("sim_5000_inf_n1", "sim_5000_inf_n5")
 
 
 def test_named_synthetic_inputs_are_generated_deterministically() -> None:
@@ -23,8 +29,10 @@ def test_named_synthetic_inputs_are_generated_deterministically() -> None:
 
     expected_sizes = {
         "sim_500_seed42": 500,
+        "sim_1500_seed42": 1_500,
         "dense_500_seed42": 500,
         "sim_5000_seed42": 5_000,
+        "sim_15000_seed42": 15_000,
         "sim_50000_seed42": 50_000,
     }
     for dataset_id, size in expected_sizes.items():
@@ -42,17 +50,29 @@ def test_named_synthetic_inputs_are_generated_deterministically() -> None:
 def test_frozen_r_records_are_self_contained() -> None:
     """Each retained R record contains its exact inputs, partitions, and outputs."""
 
-    for oracle_id in ORACLE_IDS:
-        record = load_oracle(oracle_id)
+    for reference_id in REFERENCE_IDS:
+        record = load_reference(reference_id)
         peer_input = record.peer_input
-        assert peer_input.oracle_id == oracle_id
-        assert peer_input.size == 5_000
+        assert peer_input.reference_id == reference_id
+        expected_size = 33_469 if record.spec.dataset_id == "airway" else 5_000
+        assert peer_input.size == expected_size
         assert peer_input.groups is not None
         assert peer_input.folds is not None
         assert peer_input.fold_lambdas is not None
-        assert record.metadata["case_id"] == oracle_id
+        assert record.metadata["reference_id"] == reference_id
+        assert record.metadata["r_ihw_version"] == "1.40.0"
         assert np.all(np.isfinite(record.adjusted_pvalues))
         assert np.all(np.isfinite(record.weights))
+
+
+def test_airway_input_comes_from_the_benchmark_record() -> None:
+    """The real-data shape is available without root data or a download."""
+
+    peer_input = load_peer_input("airway")
+
+    assert peer_input.size == 33_469
+    assert peer_input.source_path == "bench/data/airway_r_ihw_1_40_0.npz"
+    assert "existing local" in peer_input.provenance.lower()
 
 
 def test_production_fit_on_generated_input() -> None:
@@ -125,6 +145,13 @@ def test_numpy_peer_emits_normalized_arrays(tmp_path: Path) -> None:
     assert len(document["weights"]) == 500
 
 
+def test_r_one_bin_shortcut_reports_one_effective_fold() -> None:
+    """R IHW reduces a requested cross-fit to one fold when only one bin exists."""
+
+    assert _r_output_fold_count(1, 5) == 1
+    assert _r_output_fold_count(3, 5) == 5
+
+
 def test_unsupported_pyihw_is_not_reported_as_success(tmp_path: Path) -> None:
     """A missing or unreviewed pyihw version has explicit unavailable status."""
 
@@ -162,9 +189,9 @@ def test_unsupported_pyihw_is_not_reported_as_success(tmp_path: Path) -> None:
 def test_production_path_matches_frozen_r_records() -> None:
     """Frozen groups and folds reproduce the retained R output vectors."""
 
-    for oracle_id in ORACLE_IDS:
-        record = load_oracle(oracle_id)
-        result = _fit_oracle(record)
+    for reference_id in PARITY_GATE_IDS:
+        record = load_reference(reference_id)
+        result = _fit_reference(record)
         np.testing.assert_allclose(
             result.adj_pvalues,
             record.adjusted_pvalues,
@@ -184,8 +211,8 @@ def test_production_path_matches_frozen_r_records() -> None:
 def test_bh_on_r_weights_matches_frozen_r_records() -> None:
     """The local weighted-BH step agrees with each retained R record."""
 
-    for oracle_id in ORACLE_IDS:
-        record = load_oracle(oracle_id)
+    for reference_id in REFERENCE_IDS:
+        record = load_reference(reference_id)
         adjusted = _p_adjust(
             _safe_divide(record.peer_input.pvalues, record.weights), "fdr_bh"
         )
@@ -198,7 +225,7 @@ def test_bh_on_r_weights_matches_frozen_r_records() -> None:
         assert int(np.sum(adjusted <= 0.1)) == record.r_rejections
 
 
-def _fit_oracle(record: OracleRecord) -> IHWResult:
+def _fit_reference(record: ReferenceRecord) -> IHWResult:
     peer_input = record.peer_input
     assert peer_input.groups is not None
     assert peer_input.folds is not None

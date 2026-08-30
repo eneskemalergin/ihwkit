@@ -36,7 +36,7 @@ The public function has no solver or JIT switches. `lp_backend` and `use_numba` 
 
 ## Peer comparisons
 
-`tools/peer.py` is the single local interface for comparison methods. Ordinary synthetic inputs are generated from readable names, sizes, and seeds. The only stored comparison data are two self-contained R records under `tools/fixtures/`, containing the exact inputs, partitions, and outputs used by frozen parity replay.
+`tools/peer.py` is the single local interface for comparison methods. Ordinary synthetic inputs are generated from readable names, sizes, and seeds. `bench/data/` contains one self-contained R reference file per retained data shape: the synthetic `n=5000` shape and the existing local airway p-value/base-mean shape. Each file stores the input once and the partitions and R outputs for one-fold infinity, five-fold infinity, and five-fold automatic lambda.
 
 The supported comparison methods are tool-owned and are not part of the installable API:
 
@@ -52,27 +52,60 @@ Run one method directly with:
 python tools/peer.py --method ihwkit_numpy_numba --dataset sim_5000_seed42
 ```
 
-Run a correctness and availability gate with:
+Run the generated production correctness gate with:
 
 ```bash
 python tools/check_peer_correctness.py
 ```
 
-Synthetic lambda-infinity replay uses the frozen R oracle cases. Rejection counts, adjusted p-values, weights, and error status are separate checks. A close rejection count alone is not a parity claim.
+Synthetic lambda-infinity replay uses the fixed R reference cases. Rejection counts, adjusted p-values, weights, and error status are separate checks. A close rejection count alone is not a parity claim.
 
-Airway files are local diagnostics only. Their provenance and licensing are unresolved, so `.gitignore` excludes them and they never block a synthetic release gate.
+There is no root `data/` tree, manifest, checksum, detached metadata file, or benchmark download step. [`bench/data/README.md`](bench/data/README.md) records the human-readable provenance and the known limitation of the existing airway export. Airway remains diagnostic and never blocks a synthetic release gate.
 
 ## Benchmarks
 
-Install [`zebrac`](https://github.com/eneskemalergin/zebrac) and make the executable available on `PATH`. The benchmark runner records the resolved executable path, reported version, date, command, and runtime details for each local result.
+The local `bench` entry point keeps correctness, parity, statistical validity, robustness, and performance as separate questions. The full study runs those tracks in a visible order and reports them separately; it never reduces them to a combined score.
+
+Show the current evidence matrix with:
+
+```bash
+python -m bench matrix
+```
+
+Run the cheap tracks directly:
+
+```bash
+python -m bench correctness
+python -m bench parity
+python -m bench robustness
+python -m bench validity --quick
+```
+
+`python -m bench references` lists the immutable R records without running R. An explicit `--refresh DATASET` reruns R IHW against the arrays already stored for that dataset; routine benchmarks never refresh references.
+
+The robustness command currently returns nonzero because production reports LP infeasibility on the three airway replays and the generated `mixture_mild`, `n=3000`, seed-2034 case. It still writes the complete report, including the independently passing weighted-BH checks. These are known results, not missing-data conditions or hidden fallbacks.
+
+The current comparative report is [`bench/REPORT.md`](bench/REPORT.md). Its light/dark summary figures use horizontal FDR and power intervals, tolerance-scaled fixed-reference parity, an absolute cost matrix, and a peer-to-ihwkit ratio matrix. Numerical robustness and collapsible detailed tables remain beside the visual summaries. Missing, failed, unavailable, and scope-limited methods remain visible.
+
+The validity runner writes a row for every attempted fit plus a compact summary under ignored `tmp/results/`. Global-null FDR is measured as the probability of any rejection, not as the fraction of hypotheses rejected. The quick run is a wiring smoke test, not calibration evidence.
+
+For process-level performance, install [`zebrac`](https://github.com/eneskemalergin/zebrac) and make the executable available on `PATH`. The runner records the resolved executable path, reported version, date, command, and runtime details for each local result.
 
 Run a small process-level comparison with:
 
 ```bash
-python tools/benchmark_zebrac.py --dataset sim_5000_seed42 --duration 5000 --warmup 3 --min-samples 10 --max-samples 10
+python -m bench performance --dataset sim_5000_seed42 --duration 5000 --warmup 3 --min-samples 10 --max-samples 10
 ```
 
-The production command runs first, followed by available peer methods. Raw zebrac JSON and readable comparison metadata are written under ignored `tmp/results/`. The measurement includes process startup, input generation or loading, and any JIT initialization performed by a method. Keep cold process measurements separate from any future warmed algorithm measurement.
+The default measures only `ihwkit_numpy_numba`, because that is the implementation expected to change. Request comparisons explicitly with `--methods`, for example `--methods ihwkit_numpy_numba r_ihw`. Raw zebrac JSON and readable comparison metadata are written under ignored `tmp/results/`. The measurement includes process startup, input generation or loading, and any JIT initialization performed by a method. The full study reports these complete-process measurements separately from repeated fit calls after warmup.
+
+Run the full benchmark and regenerate the report with the optional peer and plotting environment:
+
+```bash
+uv run --no-project --with pytest --with numpy --with numba --with scipy --with pyihw==0.2.0 --with matplotlib python -m bench study
+```
+
+`bench/peer-performance.json` retains the dated machine-local measurements for comparison methods that normally do not change. The default full study remeasures production and reuses that readable table. Use `--refresh-peers` deliberately when peer code, versions, the machine, or the measurement protocol changes. Fixed R parity outputs remain in `bench/data/` and are never regenerated by the study command.
 
 ## Development
 
@@ -88,4 +121,4 @@ Run the repository-wide gate, including generated inputs, frozen R replay, and p
 uv run --no-project --with pytest --with numpy --with numba pytest -q
 ```
 
-`tests/` contains tests for the installable `ihw` package only. The repository-wide test command also collects the consolidated peer checks under `tools/tests/`. `tools/` contains local utilities, simulations, the peer interface, frozen R records, and statistical evidence workflows. Ignored `data/` is only for local diagnostics such as airway. The installable module remains `src/ihw.py`.
+`tests/` contains tests for the installable `ihw` package only. The repository-wide test command also collects the consolidated tool and benchmark checks under `tools/tests/`. `bench/` is the single human-facing evidence entry point and owns retained benchmark data. `tools/` contains focused implementations, simulations, and the peer interface. The installable module remains `src/ihw.py`.

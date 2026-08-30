@@ -43,13 +43,101 @@ METHODS: tuple[MethodId, ...] = (
     "pyihw",
     "r_ihw",
 )
-COMPARISON_METHODS = METHODS[1:]
 R_SCRIPT = Path(__file__).with_name("peer.R")
-_ORACLE_PATHS = {
-    "sim_5000_inf_n1": Path("tools/fixtures/sim_5000_seed42_r_inf_n1.npz"),
-    "sim_5000_inf_n5": Path("tools/fixtures/sim_5000_seed42_r_inf_n5.npz"),
-}
-ORACLE_IDS = tuple(_ORACLE_PATHS)
+
+
+@dataclass(frozen=True, slots=True)
+class ReferenceSpec:
+    """Name one immutable R result inside a dataset reference file."""
+
+    reference_id: str
+    dataset_id: str
+    relative_path: Path
+    prefix: str
+    gate: bool
+    alpha: float
+    nbins: int
+    nfolds: int
+    lambda_policy: LambdaPolicy
+    seed: int
+
+
+REFERENCE_SPECS: tuple[ReferenceSpec, ...] = (
+    ReferenceSpec(
+        "sim_5000_inf_n1",
+        "sim_5000_seed42",
+        Path("bench/data/sim_5000_r_ihw_1_40_0.npz"),
+        "inf_n1",
+        True,
+        0.1,
+        3,
+        1,
+        "inf",
+        42,
+    ),
+    ReferenceSpec(
+        "sim_5000_inf_n5",
+        "sim_5000_seed42",
+        Path("bench/data/sim_5000_r_ihw_1_40_0.npz"),
+        "inf_n5",
+        True,
+        0.1,
+        3,
+        5,
+        "inf",
+        42,
+    ),
+    ReferenceSpec(
+        "sim_5000_auto",
+        "sim_5000_seed42",
+        Path("bench/data/sim_5000_r_ihw_1_40_0.npz"),
+        "auto",
+        False,
+        0.1,
+        3,
+        5,
+        "auto",
+        42,
+    ),
+    ReferenceSpec(
+        "airway_inf_n1",
+        "airway",
+        Path("bench/data/airway_r_ihw_1_40_0.npz"),
+        "inf_n1",
+        False,
+        0.1,
+        22,
+        1,
+        "inf",
+        42,
+    ),
+    ReferenceSpec(
+        "airway_inf_n5",
+        "airway",
+        Path("bench/data/airway_r_ihw_1_40_0.npz"),
+        "inf_n5",
+        False,
+        0.1,
+        22,
+        5,
+        "inf",
+        42,
+    ),
+    ReferenceSpec(
+        "airway_auto",
+        "airway",
+        Path("bench/data/airway_r_ihw_1_40_0.npz"),
+        "auto",
+        False,
+        0.1,
+        22,
+        5,
+        "auto",
+        42,
+    ),
+)
+REFERENCE_IDS = tuple(spec.reference_id for spec in REFERENCE_SPECS)
+PARITY_GATE_IDS = tuple(spec.reference_id for spec in REFERENCE_SPECS if spec.gate)
 
 
 class PeerDataError(ValueError):
@@ -71,13 +159,14 @@ class PeerInput:
     groups: IntegerArray | None = None
     folds: IntegerArray | None = None
     fold_lambdas: FloatArray | None = None
-    oracle_id: str | None = None
+    reference_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
-class OracleRecord:
-    """Store frozen R output and the exact input used to produce it."""
+class ReferenceRecord:
+    """Store immutable R output and the exact input used to produce it."""
 
+    spec: ReferenceSpec
     peer_input: PeerInput
     metadata: Mapping[str, object]
     r_rejections: int
@@ -123,15 +212,26 @@ class FitResult:
     version: str
 
 
-def load_peer_input(dataset_id: str, *, oracle_id: str | None = None) -> PeerInput:
+@dataclass(frozen=True, slots=True)
+class RReferenceResult:
+    """Store an R fit plus the partition needed for later Python replay."""
+
+    fit: FitResult
+    groups: IntegerArray
+    folds: IntegerArray
+    fold_lambdas: FloatArray
+
+
+def load_peer_input(dataset_id: str, *, reference_id: str | None = None) -> PeerInput:
     """Return a named generated input or the input inside a frozen R record.
 
     Parameters
     ----------
     dataset_id : str
-        ``sim_500_seed42``, ``dense_500_seed42``, ``sim_5000_seed42``,
-        ``sim_50000_seed42``, or the optional local ``airway_seed42``.
-    oracle_id : str or None, optional
+        ``sim_500_seed42``, ``sim_1500_seed42``, ``dense_500_seed42``,
+        ``sim_5000_seed42``, ``sim_15000_seed42``, ``sim_50000_seed42`` or
+        ``airway``.
+    reference_id : str or None, optional
         Frozen R record whose exact inputs and partitions should be returned.
 
     Returns
@@ -145,18 +245,20 @@ def load_peer_input(dataset_id: str, *, oracle_id: str | None = None) -> PeerInp
         If the name is unknown or a required local record is unavailable.
     """
 
-    if oracle_id is not None:
-        record = load_oracle(oracle_id)
+    if reference_id is not None:
+        record = load_reference(reference_id)
         if record.peer_input.dataset_id != dataset_id:
             raise PeerDataError(
-                f"oracle {oracle_id!r} belongs to "
+                f"reference {reference_id!r} belongs to "
                 f"{record.peer_input.dataset_id!r}, not {dataset_id!r}"
             )
         return record.peer_input
     generated = {
         "sim_500_seed42": (ignatiadis, 500),
+        "sim_1500_seed42": (ignatiadis, 1_500),
         "dense_500_seed42": (dense_covariate, 500),
         "sim_5000_seed42": (ignatiadis, 5_000),
+        "sim_15000_seed42": (ignatiadis, 15_000),
         "sim_50000_seed42": (ignatiadis, 50_000),
     }
     if dataset_id in generated:
@@ -175,61 +277,84 @@ def load_peer_input(dataset_id: str, *, oracle_id: str | None = None) -> PeerInp
                 truth_labels=draw.is_null,
             )
         )
-    if dataset_id == "airway_seed42":
-        return _load_local_airway()
+    if dataset_id == "airway":
+        return _load_reference_input("airway_inf_n5")
     raise PeerDataError(f"unknown dataset {dataset_id!r}")
 
 
-def load_oracle(oracle_id: str) -> OracleRecord:
-    """Load one of the two self-contained frozen R comparison records."""
+def load_reference(reference_id: str) -> ReferenceRecord:
+    """Load one immutable R result and its exact input and partitions."""
 
-    relative_path = _ORACLE_PATHS.get(oracle_id)
-    if relative_path is None:
-        raise PeerDataError(f"unknown oracle {oracle_id!r}")
-    path = ROOT / relative_path
+    spec = _reference_spec(reference_id)
+    path = ROOT / spec.relative_path
     if not path.is_file():
-        raise PeerDataError(f"oracle not found: {relative_path}")
+        raise PeerDataError(f"reference not found: {spec.relative_path}")
+    prefix = f"{spec.prefix}_"
     try:
         with np.load(path, allow_pickle=False) as archive:
             pvalues = _archive_vector(archive, "pvalues", np.float64)
             size = pvalues.size
             covariates = _archive_vector(archive, "covariates", np.float64, size)
-            groups = _archive_vector(archive, "groups", np.intp, size)
-            folds = _archive_vector(archive, "folds", np.intp, size)
-            adjusted = _archive_vector(archive, "r_adj_pvalues", np.float64, size)
-            weights = _archive_vector(archive, "r_weights", np.float64, size)
-            lambdas = _oracle_lambdas(archive, folds)
-            rejections = _archive_scalar(archive, "r_rejections", int)
-            metadata_text = _archive_scalar(archive, "meta_json", str)
-    except (OSError, ValueError, KeyError, json.JSONDecodeError) as exc:
-        raise PeerDataError(f"could not read oracle {relative_path}: {exc}") from exc
-    try:
-        metadata_value = json.loads(metadata_text)
-    except json.JSONDecodeError as exc:
-        raise PeerDataError(f"oracle {oracle_id!r} metadata is not valid JSON") from exc
-    if not isinstance(metadata_value, dict):
-        raise PeerDataError(f"oracle {oracle_id!r} metadata must be an object")
-    metadata = {str(key): value for key, value in metadata_value.items()}
-    if metadata.get("case_id") != oracle_id:
-        raise PeerDataError(f"oracle {oracle_id!r} metadata has the wrong case_id")
+            groups = _archive_vector(archive, prefix + "groups", np.intp, size)
+            folds = _archive_vector(archive, prefix + "folds", np.intp, size)
+            adjusted = _archive_vector(
+                archive, prefix + "adjusted_pvalues", np.float64, size
+            )
+            weights = _archive_vector(archive, prefix + "weights", np.float64, size)
+            lambdas = _reference_lambdas(archive, prefix, spec.nfolds)
+            rejections = _archive_scalar(archive, prefix + "rejections", int)
+            metadata = {
+                "reference_id": reference_id,
+                "dataset_id": _archive_scalar(archive, "dataset_id", str),
+                "provenance": _archive_scalar(archive, "provenance", str),
+                "source_url": _archive_scalar(archive, "source_url", str),
+                "source_license": _archive_scalar(archive, "source_license", str),
+                "r_ihw_version": _archive_scalar(archive, "r_ihw_version", str),
+                "alpha": float(_archive_scalar(archive, prefix + "alpha", float)),
+                "nbins": _archive_scalar(archive, prefix + "nbins", int),
+                "nfolds": _archive_scalar(archive, prefix + "nfolds", int),
+                "lambda_policy": _archive_scalar(
+                    archive, prefix + "lambda_policy", str
+                ),
+                "seed": _archive_scalar(archive, prefix + "seed", int),
+            }
+    except (OSError, ValueError, KeyError) as exc:
+        raise PeerDataError(
+            f"could not read reference {spec.relative_path}: {exc}"
+        ) from exc
+    _validate_reference_metadata(spec, metadata)
     peer_input = _validated_input(
         PeerInput(
-            dataset_id="sim_5000_seed42",
-            source_path=relative_path.as_posix(),
-            provenance=f"frozen R IHW record {oracle_id}",
+            dataset_id=spec.dataset_id,
+            source_path=spec.relative_path.as_posix(),
+            provenance=str(metadata["provenance"]),
             size=size,
-            seed=42,
+            seed=spec.seed,
             pvalues=pvalues,
             covariates=covariates,
             groups=groups,
             folds=folds,
             fold_lambdas=lambdas,
-            oracle_id=oracle_id,
+            reference_id=reference_id,
         )
     )
-    if np.any(~np.isfinite(adjusted)) or np.any(~np.isfinite(weights)):
-        raise PeerDataError(f"oracle {oracle_id!r} contains nonfinite output")
-    return OracleRecord(peer_input, metadata, rejections, adjusted, weights)
+    if int(np.max(groups)) + 1 != spec.nbins:
+        raise PeerDataError(f"reference {reference_id!r} has unexpected groups")
+    if int(np.max(folds)) + 1 != spec.nfolds:
+        raise PeerDataError(f"reference {reference_id!r} has unexpected folds")
+    if np.any(~np.isfinite(adjusted)) or np.any((adjusted < 0.0) | (adjusted > 1.0)):
+        raise PeerDataError(
+            f"reference {reference_id!r} adjusted p-values must lie in [0, 1]"
+        )
+    if np.any(~np.isfinite(weights)) or np.any(weights < 0.0):
+        raise PeerDataError(
+            f"reference {reference_id!r} weights must be finite and nonnegative"
+        )
+    if rejections != int(np.sum(adjusted <= spec.alpha)):
+        raise PeerDataError(
+            f"reference {reference_id!r} rejection count does not match its output"
+        )
+    return ReferenceRecord(spec, peer_input, metadata, rejections, adjusted, weights)
 
 
 def fit(method_id: MethodId, peer_input: PeerInput, config: RunConfig) -> FitResult:
@@ -336,7 +461,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         seed=args.seed,
     )
     try:
-        peer_input = load_peer_input(args.dataset, oracle_id=args.oracle)
+        peer_input = load_peer_input(args.dataset, reference_id=args.reference)
     except PeerDataError as exc:
         document: dict[str, object] = {
             "method_id": args.method,
@@ -423,6 +548,16 @@ def _fit_pyihw(peer_input: PeerInput, config: RunConfig) -> FitResult:
 
 
 def _fit_r(peer_input: PeerInput, config: RunConfig) -> FitResult:
+    return generate_r_reference(peer_input, config).fit
+
+
+def generate_r_reference(peer_input: PeerInput, config: RunConfig) -> RReferenceResult:
+    """Run R IHW once and return everything required for immutable replay.
+
+    This is the deliberate reference-generation path. Routine correctness,
+    parity, validity, robustness, and performance commands do not call it.
+    """
+
     rscript = shutil.which("Rscript")
     if rscript is None:
         raise PeerUnavailable("Rscript is not installed")
@@ -488,9 +623,43 @@ def _fit_r(peer_input: PeerInput, config: RunConfig) -> FitResult:
             .read_text(encoding="utf-8")
             .strip()
         )
+        groups = np.asarray(
+            _read_vector(output_prefix.with_suffix(".groups.txt")), dtype=np.intp
+        )
+        folds = np.asarray(
+            _read_vector(output_prefix.with_suffix(".folds.txt")), dtype=np.intp
+        )
+        fold_lambdas = _read_vector(output_prefix.with_suffix(".lambdas.txt"))
     if not version:
         raise RuntimeError("R IHW comparison did not report its package version")
-    return FitResult(adjusted, weights, rejection_count, version)
+    fit_result = FitResult(adjusted, weights, rejection_count, version)
+    _validate_fit(fit_result, peer_input, config.alpha)
+    _validated_input(
+        PeerInput(
+            dataset_id=peer_input.dataset_id,
+            source_path=peer_input.source_path,
+            provenance=peer_input.provenance,
+            size=peer_input.size,
+            seed=peer_input.seed,
+            pvalues=peer_input.pvalues,
+            covariates=peer_input.covariates,
+            groups=groups,
+            folds=folds,
+            fold_lambdas=fold_lambdas,
+        )
+    )
+    effective_nfolds = _r_output_fold_count(nbins, nfolds)
+    if fold_lambdas.shape != (effective_nfolds,):
+        raise RuntimeError(f"R fold lambdas must have shape ({effective_nfolds},)")
+    if np.any(np.isnan(fold_lambdas)) or np.any(fold_lambdas < 0.0):
+        raise RuntimeError("R fold lambdas must be nonnegative and not NaN")
+    return RReferenceResult(fit_result, groups, folds, fold_lambdas)
+
+
+def _r_output_fold_count(nbins: int, requested_nfolds: int) -> int:
+    """Return R IHW's effective fold count for its one-bin BH shortcut."""
+
+    return 1 if nbins == 1 else requested_nfolds
 
 
 def _ihw_kwargs(peer_input: PeerInput, config: RunConfig) -> dict[str, object]:
@@ -554,32 +723,47 @@ def _validate_fit(result: FitResult, peer_input: PeerInput, alpha: float) -> Non
         raise RuntimeError("weights must be finite and nonnegative")
 
 
-def _load_local_airway() -> PeerInput:
-    relative_path = Path("data/fixtures/airway_seed42.npz")
-    path = ROOT / relative_path
-    if not path.is_file():
-        raise PeerDataError(
-            "local airway data is unavailable; provenance and licensing are unresolved"
-        )
-    try:
-        with np.load(path, allow_pickle=False) as archive:
-            pvalues = _archive_vector(archive, "pvalues", np.float64)
-            covariates = _archive_vector(
-                archive, "covariates", np.float64, pvalues.size
-            )
-    except (OSError, ValueError, KeyError) as exc:
-        raise PeerDataError(f"could not read local airway data: {exc}") from exc
+def _load_reference_input(reference_id: str) -> PeerInput:
+    record = load_reference(reference_id)
+    frozen = record.peer_input
     return _validated_input(
         PeerInput(
-            dataset_id="airway_seed42",
-            source_path=relative_path.as_posix(),
-            provenance="local airway-derived copy with unresolved provenance and licensing",
-            size=pvalues.size,
-            seed=42,
-            pvalues=pvalues,
-            covariates=covariates,
+            dataset_id=frozen.dataset_id,
+            source_path=frozen.source_path,
+            provenance=frozen.provenance,
+            size=frozen.size,
+            seed=frozen.seed,
+            pvalues=frozen.pvalues,
+            covariates=frozen.covariates,
         )
     )
+
+
+def _reference_spec(reference_id: str) -> ReferenceSpec:
+    for spec in REFERENCE_SPECS:
+        if spec.reference_id == reference_id:
+            return spec
+    raise PeerDataError(f"unknown reference {reference_id!r}")
+
+
+def _validate_reference_metadata(
+    spec: ReferenceSpec, metadata: Mapping[str, object]
+) -> None:
+    expected: Mapping[str, object] = {
+        "reference_id": spec.reference_id,
+        "dataset_id": spec.dataset_id,
+        "alpha": spec.alpha,
+        "nbins": spec.nbins,
+        "nfolds": spec.nfolds,
+        "lambda_policy": spec.lambda_policy,
+        "seed": spec.seed,
+    }
+    for key, value in expected.items():
+        if metadata.get(key) != value:
+            raise PeerDataError(f"reference {spec.reference_id!r} has unexpected {key}")
+    for key in ("provenance", "source_url", "source_license", "r_ihw_version"):
+        if not str(metadata.get(key, "")).strip():
+            raise PeerDataError(f"reference {spec.reference_id!r} has empty {key}")
 
 
 def _validated_input(peer_input: PeerInput) -> PeerInput:
@@ -625,21 +809,18 @@ def _archive_vector(
 
 
 def _archive_scalar(
-    archive: np.lib.npyio.NpzFile, key: str, target: type[int | str]
-) -> int | str:
+    archive: np.lib.npyio.NpzFile, key: str, target: type[float | int | str]
+) -> float | int | str:
     value = np.asarray(archive[key])
     if value.ndim != 0:
         raise PeerDataError(f"{key} must be scalar")
     return target(value.item())
 
 
-def _oracle_lambdas(archive: np.lib.npyio.NpzFile, folds: IntegerArray) -> FloatArray:
-    nfolds = int(np.max(folds)) + 1
-    value = np.asarray(archive["fold_lambdas"], dtype=np.float64)
-    if value.ndim == 0 and (np.isnan(value.item()) or np.isinf(value.item())):
-        return np.full(nfolds, np.inf, dtype=np.float64)
-    if value.ndim == 1 and value.shape == (nfolds,) and np.all(np.isnan(value)):
-        return np.full(nfolds, np.inf, dtype=np.float64)
+def _reference_lambdas(
+    archive: np.lib.npyio.NpzFile, prefix: str, nfolds: int
+) -> FloatArray:
+    value = np.asarray(archive[prefix + "fold_lambdas"], dtype=np.float64)
     if value.ndim != 1 or value.shape != (nfolds,):
         raise PeerDataError(f"fold_lambdas must have shape ({nfolds},)")
     if np.any(np.isnan(value)) or np.any(value < 0.0):
@@ -662,7 +843,7 @@ def _argument_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
     parser.add_argument("--method", required=True, choices=METHODS)
     parser.add_argument("--dataset", required=True)
-    parser.add_argument("--oracle")
+    parser.add_argument("--reference", choices=REFERENCE_IDS)
     parser.add_argument("--alpha", type=float, default=0.1)
     parser.add_argument("--nbins", type=_parse_nbins, default="auto")
     parser.add_argument("--nfolds", type=int)

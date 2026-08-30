@@ -79,6 +79,7 @@ if (length(pvalues) == 0L || length(pvalues) != length(covariates)) {
 }
 
 lambda_value <- if (identical(lambda_policy, "auto")) "auto" else Inf
+set.seed(as.integer(seed_text))
 fit <- tryCatch(
   IHW::ihw(
     pvalues = pvalues,
@@ -97,6 +98,10 @@ fit <- tryCatch(
 adjusted <- as.numeric(IHW::adj_pvalues(fit))
 weights <- as.numeric(IHW::weights(fit))
 rejections <- sum(adjusted <= as.numeric(alpha_text), na.rm = TRUE)
+fit_frame <- methods::slot(fit, "df")
+groups <- as.integer(fit_frame$group) - 1L
+folds <- as.integer(fit_frame$fold) - 1L
+fold_lambdas <- as.numeric(IHW::regularization_term(fit))
 write.table(
   adjusted,
   file = paste0(output_prefix, ".adj.txt"),
@@ -118,4 +123,25 @@ writeLines(
 writeLines(
   as.character(utils::packageVersion("IHW")),
   con = paste0(output_prefix, ".version.txt")
+)
+write.table(
+  groups,
+  file = paste0(output_prefix, ".groups.txt"),
+  row.names = FALSE,
+  col.names = FALSE,
+  quote = FALSE
+)
+write.table(
+  folds,
+  file = paste0(output_prefix, ".folds.txt"),
+  row.names = FALSE,
+  col.names = FALSE,
+  quote = FALSE
+)
+write.table(
+  fold_lambdas,
+  file = paste0(output_prefix, ".lambdas.txt"),
+  row.names = FALSE,
+  col.names = FALSE,
+  quote = FALSE
 )

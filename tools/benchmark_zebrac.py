@@ -15,10 +15,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from tools.peer import METHODS, PeerDataError, PeerInput, load_peer_input
+from tools.peer import METHODS, REFERENCE_IDS, PeerDataError, PeerInput, load_peer_input
 
 PEER_SCRIPT = ROOT / "tools" / "peer.py"
-DEFAULT_METHODS = METHODS
+DEFAULT_METHODS = ("ihwkit_numpy_numba",)
 METRIC_FIELDS = (
     "wall_time",
     "peak_rss",
@@ -41,7 +41,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     result_dir = (ROOT / args.result_dir).resolve()
     _ensure_result_dir(result_dir)
     try:
-        peer_input = load_peer_input(args.dataset, oracle_id=args.oracle)
+        peer_input = load_peer_input(args.dataset, reference_id=args.reference)
     except PeerDataError as exc:
         print(f"peer data error: {exc}", file=sys.stderr)
         return 2
@@ -150,8 +150,8 @@ def _run_preflight(
         str(result_path),
         "--quiet",
     ]
-    if args.oracle is not None:
-        command.extend(["--oracle", args.oracle])
+    if args.reference is not None:
+        command.extend(["--reference", args.reference])
     if args.nfolds is not None:
         command.extend(["--nfolds", str(args.nfolds)])
     if args.adjustment_type != "bh":
@@ -199,8 +199,8 @@ def _peer_command(method_id: str, args: argparse.Namespace) -> str:
         str(args.seed),
         "--quiet",
     ]
-    if args.oracle is not None:
-        tokens.extend(["--oracle", args.oracle])
+    if args.reference is not None:
+        tokens.extend(["--reference", args.reference])
     if args.nfolds is not None:
         tokens.extend(["--nfolds", str(args.nfolds)])
     if args.adjustment_type != "bh":
@@ -280,7 +280,7 @@ def _write_metadata(
             "lambda_policy": args.lambda_policy,
             "adjustment_type": args.adjustment_type,
             "seed": args.seed,
-            "oracle_id": args.oracle,
+            "reference_id": args.reference,
             "warmup": args.warmup,
             "min_samples": args.min_samples,
             "max_samples": args.max_samples,
@@ -303,7 +303,7 @@ def _write_metadata(
 def _argument_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset", required=True)
-    parser.add_argument("--oracle")
+    parser.add_argument("--reference", choices=REFERENCE_IDS)
     parser.add_argument("--alpha", type=float, default=0.1)
     parser.add_argument("--nbins", default="auto")
     parser.add_argument("--nfolds", type=int)
