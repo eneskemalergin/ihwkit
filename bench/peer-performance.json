@@ -27,16 +27,16 @@
       "failed_sample_count": 0,
       "measurement": "cold_process",
       "method_id": "ihwkit_numpy",
-      "peak_rss_mean_bytes": 42350182.4,
-      "peak_rss_median_bytes": 42348544.0,
+      "peak_rss_mean_bytes": 42393600.0,
+      "peak_rss_median_bytes": 42524672.0,
       "rejection_count": 6,
       "sample_count": 10,
       "size": 500,
       "status": "ok",
-      "version": "ihwkit-0.1.0-pre-transition+numpy",
-      "wall_mean_ns": 157074619.1,
-      "wall_median_ns": 155194556.0,
-      "wall_std_ns": 10221239.586491982
+      "version": "ihwkit-0.1.0-reference+numpy",
+      "wall_mean_ns": 148591866.9,
+      "wall_median_ns": 147458705.0,
+      "wall_std_ns": 5235480.872831166
     },
     {
       "dataset_id": "sim_500_seed42",
@@ -44,16 +44,16 @@
       "failed_sample_count": 0,
       "measurement": "cold_process",
       "method_id": "ihwkit_scipy",
-      "peak_rss_mean_bytes": 42365747.2,
-      "peak_rss_median_bytes": 42369024.0,
+      "peak_rss_mean_bytes": 42356326.4,
+      "peak_rss_median_bytes": 42446848.0,
       "rejection_count": 6,
       "sample_count": 10,
       "size": 500,
       "status": "ok",
-      "version": "ihwkit-0.1.0-pre-transition+highs",
-      "wall_mean_ns": 150516682.5,
-      "wall_median_ns": 151864281.0,
-      "wall_std_ns": 7360548.820780648
+      "version": "ihwkit-0.1.0-reference+highs",
+      "wall_mean_ns": 149832825.0,
+      "wall_median_ns": 150116408.0,
+      "wall_std_ns": 3800000.715103354
     },
     {
       "dataset_id": "sim_500_seed42",
@@ -61,16 +61,16 @@
       "failed_sample_count": 0,
       "measurement": "cold_process",
       "method_id": "pyihw",
-      "peak_rss_mean_bytes": 81419878.4,
-      "peak_rss_median_bytes": 81350656.0,
+      "peak_rss_mean_bytes": 81289216.0,
+      "peak_rss_median_bytes": 81334272.0,
       "rejection_count": 6,
       "sample_count": 10,
       "size": 500,
       "status": "ok",
       "version": "0.2.0",
-      "wall_mean_ns": 432432237.8,
-      "wall_median_ns": 436890317.0,
-      "wall_std_ns": 13862634.639023203
+      "wall_mean_ns": 426831488.0,
+      "wall_median_ns": 425602386.0,
+      "wall_std_ns": 12256940.700321864
     },
     {
       "dataset_id": "sim_500_seed42",
@@ -78,16 +78,16 @@
       "failed_sample_count": 0,
       "measurement": "cold_process",
       "method_id": "r_ihw",
-      "peak_rss_mean_bytes": 85917286.4,
-      "peak_rss_median_bytes": 86036480.0,
+      "peak_rss_mean_bytes": 85624832.0,
+      "peak_rss_median_bytes": 85716992.0,
       "rejection_count": 6,
       "sample_count": 10,
       "size": 500,
       "status": "ok",
       "version": "1.40.0",
-      "wall_mean_ns": 530431351.7,
-      "wall_median_ns": 534281956.0,
-      "wall_std_ns": 8412228.910315348
+      "wall_mean_ns": 529258572.3,
+      "wall_median_ns": 527626240.0,
+      "wall_std_ns": 7140285.501059745
     },
     {
       "dataset_id": "sim_5000_seed42",
@@ -95,16 +95,16 @@
       "failed_sample_count": 0,
       "measurement": "cold_process",
       "method_id": "ihwkit_numpy",
-      "peak_rss_mean_bytes": 43363942.4,
-      "peak_rss_median_bytes": 43429888.0,
+      "peak_rss_mean_bytes": 43485184.0,
+      "peak_rss_median_bytes": 43560960.0,
       "rejection_count": 159,
       "sample_count": 10,
       "size": 5000,
       "status": "ok",
-      "version": "ihwkit-0.1.0-pre-transition+numpy",
-      "wall_mean_ns": 651200643.6,
-      "wall_median_ns": 651889010.0,
-      "wall_std_ns": 13189912.54501682
+      "version": "ihwkit-0.1.0-reference+numpy",
+      "wall_mean_ns": 212060126.9,
+      "wall_median_ns": 211284661.0,
+      "wall_std_ns": 5691281.715483359
     },
     {
       "dataset_id": "sim_5000_seed42",
@@ -112,16 +112,16 @@
       "failed_sample_count": 0,
       "measurement": "cold_process",
       "method_id": "ihwkit_scipy",
-      "peak_rss_mean_bytes": 83927040.0,
-      "peak_rss_median_bytes": 83984384.0,
+      "peak_rss_mean_bytes": 84084326.4,
+      "peak_rss_median_bytes": 84176896.0,
       "rejection_count": 159,
       "sample_count": 10,
       "size": 5000,
       "status": "ok",
-      "version": "ihwkit-0.1.0-pre-transition+highs",
-      "wall_mean_ns": 489723782.9,
-      "wall_median_ns": 496405702.0,
-      "wall_std_ns": 16212880.59411489
+      "version": "ihwkit-0.1.0-reference+highs",
+      "wall_mean_ns": 479662824.3,
+      "wall_median_ns": 484134687.0,
+      "wall_std_ns": 11614456.240515485
     },
     {
       "dataset_id": "sim_5000_seed42",
@@ -129,16 +129,16 @@
       "failed_sample_count": 0,
       "measurement": "cold_process",
       "method_id": "pyihw",
-      "peak_rss_mean_bytes": 85308620.8,
-      "peak_rss_median_bytes": 85446656.0,
+      "peak_rss_mean_bytes": 85204172.8,
+      "peak_rss_median_bytes": 85397504.0,
       "rejection_count": 163,
       "sample_count": 10,
       "size": 5000,
       "status": "ok",
       "version": "0.2.0",
-      "wall_mean_ns": 472302606.3,
-      "wall_median_ns": 466912405.0,
-      "wall_std_ns": 14235007.239591142
+      "wall_mean_ns": 471501713.3,
+      "wall_median_ns": 466796067.0,
+      "wall_std_ns": 15722875.964748144
     },
     {
       "dataset_id": "sim_5000_seed42",
@@ -146,16 +146,16 @@
       "failed_sample_count": 0,
       "measurement": "cold_process",
       "method_id": "r_ihw",
-      "peak_rss_mean_bytes": 92939878.4,
-      "peak_rss_median_bytes": 93048832.0,
+      "peak_rss_mean_bytes": 92816588.8,
+      "peak_rss_median_bytes": 92831744.0,
       "rejection_count": 159,
       "sample_count": 10,
       "size": 5000,
       "status": "ok",
       "version": "1.40.0",
-      "wall_mean_ns": 623154631.0,
-      "wall_median_ns": 624404043.0,
-      "wall_std_ns": 5912529.771483946
+      "wall_mean_ns": 618212996.4,
+      "wall_median_ns": 616047450.0,
+      "wall_std_ns": 21866076.620121565
     },
     {
       "dataset_id": "sim_15000_seed42",
@@ -163,16 +163,16 @@
       "failed_sample_count": 0,
       "measurement": "cold_process",
       "method_id": "ihwkit_numpy",
-      "peak_rss_mean_bytes": 45322649.6,
-      "peak_rss_median_bytes": 45453312.0,
+      "peak_rss_mean_bytes": 44512870.4,
+      "peak_rss_median_bytes": 44523520.0,
       "rejection_count": 484,
       "sample_count": 10,
       "size": 15000,
       "status": "ok",
-      "version": "ihwkit-0.1.0-pre-transition+numpy",
-      "wall_mean_ns": 14065494676.9,
-      "wall_median_ns": 14083213550.0,
-      "wall_std_ns": 132807727.94380386
+      "version": "ihwkit-0.1.0-reference+numpy",
+      "wall_mean_ns": 318186911.2,
+      "wall_median_ns": 318490209.0,
+      "wall_std_ns": 3276709.315786488
     },
     {
       "dataset_id": "sim_15000_seed42",
@@ -180,16 +180,16 @@
       "failed_sample_count": 0,
       "measurement": "cold_process",
       "method_id": "ihwkit_scipy",
-      "peak_rss_mean_bytes": 85560934.4,
-      "peak_rss_median_bytes": 85618688.0,
+      "peak_rss_mean_bytes": 85622784.0,
+      "peak_rss_median_bytes": 85757952.0,
       "rejection_count": 484,
       "sample_count": 10,
       "size": 15000,
       "status": "ok",
-      "version": "ihwkit-0.1.0-pre-transition+highs",
-      "wall_mean_ns": 622131783.1,
-      "wall_median_ns": 624784604.0,
-      "wall_std_ns": 30044854.414492086
+      "version": "ihwkit-0.1.0-reference+highs",
+      "wall_mean_ns": 596157469.2,
+      "wall_median_ns": 596739760.0,
+      "wall_std_ns": 11830313.417989226
     },
     {
       "dataset_id": "sim_15000_seed42",
@@ -197,16 +197,16 @@
       "failed_sample_count": 0,
       "measurement": "cold_process",
       "method_id": "pyihw",
-      "peak_rss_mean_bytes": 86359244.8,
-      "peak_rss_median_bytes": 86368256.0,
+      "peak_rss_mean_bytes": 86684876.8,
+      "peak_rss_median_bytes": 86786048.0,
       "rejection_count": 459,
       "sample_count": 10,
       "size": 15000,
       "status": "ok",
       "version": "0.2.0",
-      "wall_mean_ns": 559342576.3,
-      "wall_median_ns": 570491583.0,
-      "wall_std_ns": 21705408.774759304
+      "wall_mean_ns": 529689947.5,
+      "wall_median_ns": 530559134.0,
+      "wall_std_ns": 10622716.135751776
     },
     {
       "dataset_id": "sim_15000_seed42",
@@ -214,16 +214,33 @@
       "failed_sample_count": 0,
       "measurement": "cold_process",
       "method_id": "r_ihw",
-      "peak_rss_mean_bytes": 106944102.4,
-      "peak_rss_median_bytes": 106958848.0,
+      "peak_rss_mean_bytes": 107405312.0,
+      "peak_rss_median_bytes": 107511808.0,
       "rejection_count": 482,
       "sample_count": 10,
       "size": 15000,
       "status": "ok",
       "version": "1.40.0",
-      "wall_mean_ns": 739960560.1,
-      "wall_median_ns": 728986205.0,
-      "wall_std_ns": 41132760.82633288
+      "wall_mean_ns": 705273002.1,
+      "wall_median_ns": 703509187.0,
+      "wall_std_ns": 11463545.369061727
+    },
+    {
+      "dataset_id": "sim_50000_seed42",
+      "error": null,
+      "failed_sample_count": 0,
+      "measurement": "cold_process",
+      "method_id": "ihwkit_numpy",
+      "peak_rss_mean_bytes": 50632704.0,
+      "peak_rss_median_bytes": 50753536.0,
+      "rejection_count": 1694,
+      "sample_count": 10,
+      "size": 50000,
+      "status": "ok",
+      "version": "ihwkit-0.1.0-reference+numpy",
+      "wall_mean_ns": 725398594.4,
+      "wall_median_ns": 722021352.0,
+      "wall_std_ns": 15423615.13195035
     },
     {
       "dataset_id": "sim_50000_seed42",
@@ -231,16 +248,16 @@
       "failed_sample_count": 0,
       "measurement": "cold_process",
       "method_id": "ihwkit_scipy",
-      "peak_rss_mean_bytes": 91407564.8,
-      "peak_rss_median_bytes": 91627520.0,
+      "peak_rss_mean_bytes": 91544371.2,
+      "peak_rss_median_bytes": 91451392.0,
       "rejection_count": 1694,
       "sample_count": 10,
       "size": 50000,
       "status": "ok",
-      "version": "ihwkit-0.1.0-pre-transition+highs",
-      "wall_mean_ns": 1025449056.0,
-      "wall_median_ns": 1028633379.0,
-      "wall_std_ns": 19333536.097391393
+      "version": "ihwkit-0.1.0-reference+highs",
+      "wall_mean_ns": 1000274761.5,
+      "wall_median_ns": 996117915.0,
+      "wall_std_ns": 13754418.69095232
     },
     {
       "dataset_id": "sim_50000_seed42",
@@ -248,16 +265,16 @@
       "failed_sample_count": 0,
       "measurement": "cold_process",
       "method_id": "pyihw",
-      "peak_rss_mean_bytes": 92831334.4,
-      "peak_rss_median_bytes": 93016064.0,
+      "peak_rss_mean_bytes": 92880896.0,
+      "peak_rss_median_bytes": 92954624.0,
       "rejection_count": 1681,
       "sample_count": 10,
       "size": 50000,
       "status": "ok",
       "version": "0.2.0",
-      "wall_mean_ns": 796016847.2,
-      "wall_median_ns": 797952124.0,
-      "wall_std_ns": 14311436.438382206
+      "wall_mean_ns": 772733659.0,
+      "wall_median_ns": 771769053.0,
+      "wall_std_ns": 7143921.320898333
     },
     {
       "dataset_id": "sim_50000_seed42",
@@ -265,37 +282,20 @@
       "failed_sample_count": 0,
       "measurement": "cold_process",
       "method_id": "r_ihw",
-      "peak_rss_mean_bytes": 141938688.0,
-      "peak_rss_median_bytes": 142008320.0,
+      "peak_rss_mean_bytes": 141725286.4,
+      "peak_rss_median_bytes": 141705216.0,
       "rejection_count": 1647,
       "sample_count": 10,
       "size": 50000,
       "status": "ok",
       "version": "1.40.0",
-      "wall_mean_ns": 1081494454.0,
-      "wall_median_ns": 1090259403.0,
-      "wall_std_ns": 22497746.75406721
-    },
-    {
-      "dataset_id": "sim_50000_seed42",
-      "error": "dense NumPy reference is limited to n <= 15000 after the n=50000 preflight exceeded two minutes",
-      "failed_sample_count": 0,
-      "measurement": "cold_process",
-      "method_id": "ihwkit_numpy",
-      "peak_rss_mean_bytes": null,
-      "peak_rss_median_bytes": null,
-      "rejection_count": null,
-      "sample_count": 0,
-      "size": 50000,
-      "status": "scope_limited",
-      "version": null,
-      "wall_mean_ns": null,
-      "wall_median_ns": null,
-      "wall_std_ns": null
+      "wall_mean_ns": 1062245275.7,
+      "wall_median_ns": 1059078898.0,
+      "wall_std_ns": 9695994.155503247
     }
   ],
   "purpose": "Reusable machine-local measurements for peers that normally do not change",
-  "recorded_at": "2026-08-30T01:06:01+00:00",
+  "recorded_at": "2026-08-30T01:51:38+00:00",
   "warm_rows": [
     {
       "dataset_id": "sim_500_seed42",
@@ -309,10 +309,10 @@
       "sample_count": 10,
       "size": 500,
       "status": "ok",
-      "version": "ihwkit-0.1.0-pre-transition+numpy",
-      "wall_mean_ns": 222762.0,
-      "wall_median_ns": 211546.0,
-      "wall_std_ns": 25410.233918202677
+      "version": "ihwkit-0.1.0-reference+numpy",
+      "wall_mean_ns": 205236.9,
+      "wall_median_ns": 203601.0,
+      "wall_std_ns": 5908.979164514516
     },
     {
       "dataset_id": "sim_500_seed42",
@@ -326,10 +326,10 @@
       "sample_count": 10,
       "size": 500,
       "status": "ok",
-      "version": "ihwkit-0.1.0-pre-transition+highs",
-      "wall_mean_ns": 206857.9,
-      "wall_median_ns": 203071.0,
-      "wall_std_ns": 10237.299692247409
+      "version": "ihwkit-0.1.0-reference+highs",
+      "wall_mean_ns": 201928.0,
+      "wall_median_ns": 199066.0,
+      "wall_std_ns": 5618.447887688081
     },
     {
       "dataset_id": "sim_500_seed42",
@@ -344,9 +344,9 @@
       "size": 500,
       "status": "ok",
       "version": "0.2.0",
-      "wall_mean_ns": 554860.5,
-      "wall_median_ns": 548462.0,
-      "wall_std_ns": 17674.87671652746
+      "wall_mean_ns": 555792.6,
+      "wall_median_ns": 554767.5,
+      "wall_std_ns": 5093.989512705691
     },
     {
       "dataset_id": "sim_500_seed42",
@@ -361,9 +361,9 @@
       "size": 500,
       "status": "ok",
       "version": "1.40.0",
-      "wall_mean_ns": 399679709.9,
-      "wall_median_ns": 397606756.5,
-      "wall_std_ns": 13503323.165092686
+      "wall_mean_ns": 392954670.7,
+      "wall_median_ns": 372842496.5,
+      "wall_std_ns": 40074910.132354885
     },
     {
       "dataset_id": "sim_5000_seed42",
@@ -377,10 +377,10 @@
       "sample_count": 10,
       "size": 5000,
       "status": "ok",
-      "version": "ihwkit-0.1.0-pre-transition+numpy",
-      "wall_mean_ns": 497277061.0,
-      "wall_median_ns": 497081385.0,
-      "wall_std_ns": 7966332.486604848
+      "version": "ihwkit-0.1.0-reference+numpy",
+      "wall_mean_ns": 55973700.9,
+      "wall_median_ns": 55563113.0,
+      "wall_std_ns": 1721864.3513669486
     },
     {
       "dataset_id": "sim_5000_seed42",
@@ -394,10 +394,10 @@
       "sample_count": 10,
       "size": 5000,
       "status": "ok",
-      "version": "ihwkit-0.1.0-pre-transition+highs",
-      "wall_mean_ns": 66523626.7,
-      "wall_median_ns": 66404264.0,
-      "wall_std_ns": 1181003.7784150725
+      "version": "ihwkit-0.1.0-reference+highs",
+      "wall_mean_ns": 65330279.3,
+      "wall_median_ns": 64497210.0,
+      "wall_std_ns": 2226984.9208265147
     },
     {
       "dataset_id": "sim_5000_seed42",
@@ -412,9 +412,9 @@
       "size": 5000,
       "status": "ok",
       "version": "0.2.0",
-      "wall_mean_ns": 42079732.2,
-      "wall_median_ns": 42064508.0,
-      "wall_std_ns": 194860.01692941866
+      "wall_mean_ns": 41837169.3,
+      "wall_median_ns": 40450287.5,
+      "wall_std_ns": 3959448.212443189
     },
     {
       "dataset_id": "sim_5000_seed42",
@@ -429,9 +429,9 @@
       "size": 5000,
       "status": "ok",
       "version": "1.40.0",
-      "wall_mean_ns": 476952186.5,
-      "wall_median_ns": 473901394.5,
-      "wall_std_ns": 13728138.384015124
+      "wall_mean_ns": 470020585.4,
+      "wall_median_ns": 465415966.0,
+      "wall_std_ns": 22307642.72516557
     },
     {
       "dataset_id": "sim_15000_seed42",
@@ -445,10 +445,10 @@
       "sample_count": 10,
       "size": 15000,
       "status": "ok",
-      "version": "ihwkit-0.1.0-pre-transition+numpy",
-      "wall_mean_ns": 13799157850.5,
-      "wall_median_ns": 13816785127.5,
-      "wall_std_ns": 66846635.69109574
+      "version": "ihwkit-0.1.0-reference+numpy",
+      "wall_mean_ns": 165519710.6,
+      "wall_median_ns": 164119972.0,
+      "wall_std_ns": 4446682.589798057
     },
     {
       "dataset_id": "sim_15000_seed42",
@@ -462,10 +462,10 @@
       "sample_count": 10,
       "size": 15000,
       "status": "ok",
-      "version": "ihwkit-0.1.0-pre-transition+highs",
-      "wall_mean_ns": 174065889.2,
-      "wall_median_ns": 173364200.5,
-      "wall_std_ns": 4649350.551800824
+      "version": "ihwkit-0.1.0-reference+highs",
+      "wall_mean_ns": 180177504.6,
+      "wall_median_ns": 178961896.0,
+      "wall_std_ns": 4411697.106048601
     },
     {
       "dataset_id": "sim_15000_seed42",
@@ -480,9 +480,9 @@
       "size": 15000,
       "status": "ok",
       "version": "0.2.0",
-      "wall_mean_ns": 103031983.8,
-      "wall_median_ns": 102177689.5,
-      "wall_std_ns": 2897606.67632647
+      "wall_mean_ns": 108827605.3,
+      "wall_median_ns": 109066026.0,
+      "wall_std_ns": 2039556.7144475318
     },
     {
       "dataset_id": "sim_15000_seed42",
@@ -497,26 +497,26 @@
       "size": 15000,
       "status": "ok",
       "version": "1.40.0",
-      "wall_mean_ns": 556844903.4,
-      "wall_median_ns": 553075604.0,
-      "wall_std_ns": 7896812.684390571
+      "wall_mean_ns": 564693531.0,
+      "wall_median_ns": 561193535.5,
+      "wall_std_ns": 16662922.17292896
     },
     {
       "dataset_id": "sim_50000_seed42",
-      "error": "dense NumPy reference is limited to n <= 15000 after the n=50000 preflight exceeded two minutes",
+      "error": null,
       "failed_sample_count": 0,
       "measurement": "warm_fit",
       "method_id": "ihwkit_numpy",
       "peak_rss_mean_bytes": null,
       "peak_rss_median_bytes": null,
-      "rejection_count": null,
-      "sample_count": 0,
+      "rejection_count": 1694,
+      "sample_count": 10,
       "size": 50000,
-      "status": "scope_limited",
-      "version": null,
-      "wall_mean_ns": null,
-      "wall_median_ns": null,
-      "wall_std_ns": null
+      "status": "ok",
+      "version": "ihwkit-0.1.0-reference+numpy",
+      "wall_mean_ns": 552390472.8,
+      "wall_median_ns": 554357364.0,
+      "wall_std_ns": 9713616.092199545
     },
     {
       "dataset_id": "sim_50000_seed42",
@@ -530,10 +530,10 @@
       "sample_count": 10,
       "size": 50000,
       "status": "ok",
-      "version": "ihwkit-0.1.0-pre-transition+highs",
-      "wall_mean_ns": 565006903.1,
-      "wall_median_ns": 558773514.0,
-      "wall_std_ns": 10556293.436687734
+      "version": "ihwkit-0.1.0-reference+highs",
+      "wall_mean_ns": 570914828.9,
+      "wall_median_ns": 569838756.0,
+      "wall_std_ns": 17964459.772354987
     },
     {
       "dataset_id": "sim_50000_seed42",
@@ -548,9 +548,9 @@
       "size": 50000,
       "status": "ok",
       "version": "0.2.0",
-      "wall_mean_ns": 324575650.8,
-      "wall_median_ns": 324410278.0,
-      "wall_std_ns": 3470123.5292241173
+      "wall_mean_ns": 334034961.0,
+      "wall_median_ns": 333134481.5,
+      "wall_std_ns": 2418430.4888774916
     },
     {
       "dataset_id": "sim_50000_seed42",
@@ -565,9 +565,9 @@
       "size": 50000,
       "status": "ok",
       "version": "1.40.0",
-      "wall_mean_ns": 875735271.4,
-      "wall_median_ns": 873801496.0,
-      "wall_std_ns": 7967700.507683397
+      "wall_mean_ns": 920786593.5,
+      "wall_median_ns": 909196061.5,
+      "wall_std_ns": 30431693.442718763
     }
   ]
 }

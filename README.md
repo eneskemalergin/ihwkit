@@ -4,7 +4,7 @@ Independent Hypothesis Weighting for covariate-weighted multiple testing.
 
 ## Runtime
 
-The installable library has one implementation: NumPy arrays and required Numba kernels. The weight optimization uses the dense simplex solver in `src/ihw.py`. SciPy is not an installable runtime dependency and is not a hidden fallback.
+The installable library has one implementation: NumPy arrays and required Numba kernels. The default infinite-lambda fit solves the separable Grenander allocation directly; finite-lambda fits retain the dense simplex solver in `src/ihw.py`. SciPy is not an installable runtime dependency and is not a hidden fallback.
 
 The supported runtime is Python 3.12 or newer with NumPy and Numba. Install the project from the repository root in an active environment:
 
@@ -41,7 +41,7 @@ The public function has no solver or JIT switches. `lp_backend` and `use_numba` 
 The supported comparison methods are tool-owned and are not part of the installable API:
 
 - **`ihwkit_numpy_numba`:** the production library path.
-- **`ihwkit_numpy`:** a pinned pre-transition dense NumPy simplex baseline.
+- **`ihwkit_numpy`:** the NumPy-only reference, with the same direct default allocation and a retained dense finite-lambda simplex.
 - **`ihwkit_scipy`:** a pinned pre-transition SciPy HiGHS baseline.
 - **`pyihw`:** the reviewed public `pyihw` 0.2.0 API, using its `rng` and lambda conventions explicitly.
 - **`r_ihw`:** native R IHW, with the installed IHW version read from the completed run.
@@ -83,9 +83,9 @@ python -m bench validity --quick
 
 `python -m bench references` lists the immutable R records without running R. An explicit `--refresh DATASET` reruns R IHW against the arrays already stored for that dataset; routine benchmarks never refresh references.
 
-The robustness command currently returns nonzero because production reports LP infeasibility on the three airway replays and the generated `mixture_mild`, `n=3000`, seed-2034 case. It still writes the complete report, including the independently passing weighted-BH checks. These are known results, not missing-data conditions or hidden fallbacks.
+The robustness command currently returns nonzero because the finite-lambda airway replay still reports LP infeasibility. The direct default path now passes both airway infinite-lambda replays and the generated `mixture_mild`, `n=3000`, seed-2034 case. The command still writes the complete report, including the independently passing weighted-BH checks; failures never become uniform-weight fallbacks.
 
-The current comparative report is [`bench/REPORT.md`](bench/REPORT.md). Its light/dark summary figures use horizontal FDR and power intervals, tolerance-scaled fixed-reference parity, an absolute cost matrix, and a peer-to-ihwkit ratio matrix. Numerical robustness and collapsible detailed tables remain beside the visual summaries. Missing, failed, unavailable, and scope-limited methods remain visible.
+The current comparative report is [`bench/REPORT.md`](bench/REPORT.md). Its light/dark summary figures use horizontal FDR and power intervals, tolerance-scaled fixed-reference parity, an absolute cost matrix, and a peer-to-ihwkit ratio matrix. Numerical robustness and collapsible detailed tables remain beside the visual summaries. Missing, failed, and unavailable methods remain visible.
 
 The validity runner writes a row for every attempted fit plus a compact summary under ignored `tmp/results/`. Global-null FDR is measured as the probability of any rejection, not as the fraction of hypotheses rejected. The quick run is a wiring smoke test, not calibration evidence.
 

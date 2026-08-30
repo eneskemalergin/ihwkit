@@ -405,16 +405,6 @@ def _run_warm_timings(
     for dataset_id in PROCESS_DATASETS:
         peer_input = load_peer_input(dataset_id)
         for method_id in methods:
-            if method_id == "ihwkit_numpy" and peer_input.size > 15_000:
-                rows.append(
-                    _scope_limited_row(
-                        "warm_fit",
-                        peer_input,
-                        method_id,
-                        "dense NumPy reference is limited to n <= 15000 after the n=50000 preflight exceeded two minutes",
-                    )
-                )
-                continue
             print(f"warm fit: {dataset_id} {method_id}")
             config = RunConfig(alpha=0.1, nbins="auto", nfolds=5, seed=42)
             try:
@@ -487,11 +477,7 @@ def _run_process_timings(
     relative_result_dir = result_dir.relative_to(ROOT)
     for dataset_id in PROCESS_DATASETS:
         size = load_peer_input(dataset_id).size
-        selected = [
-            method
-            for method in methods
-            if not (method == "ihwkit_numpy" and size > 15_000)
-        ]
+        selected = list(methods)
         name = f"process_{dataset_id}"
         print(f"process benchmark: {dataset_id} {' '.join(selected)}")
         performance_main(
@@ -539,15 +525,6 @@ def _run_process_timings(
                 )
         else:
             rows.extend(_process_rows(metadata_path))
-        if "ihwkit_numpy" in methods and size > 15_000:
-            rows.append(
-                _scope_limited_row(
-                    "cold_process",
-                    load_peer_input(dataset_id),
-                    "ihwkit_numpy",
-                    "dense NumPy reference is limited to n <= 15000 after the n=50000 preflight exceeded two minutes",
-                )
-            )
     return rows
 
 
@@ -582,28 +559,6 @@ def _process_rows(path: Path) -> list[TimingRow]:
             )
         )
     return rows
-
-
-def _scope_limited_row(
-    measurement: str, peer_input: PeerInput, method_id: str, reason: str
-) -> TimingRow:
-    return TimingRow(
-        measurement,
-        peer_input.dataset_id,
-        peer_input.size,
-        method_id,
-        "scope_limited",
-        None,
-        0,
-        0,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        reason,
-    )
 
 
 def _write_peer_baseline(
@@ -708,8 +663,89 @@ def render_report(
         study_environment=study_environment,
         quick=quick,
     )
-    REPORT_PATH.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    REPORT_PATH.write_text(
+        "\n".join(_format_markdown_tables(lines)) + "\n", encoding="utf-8"
+    )
     print(f"wrote {REPORT_PATH.relative_to(ROOT)}")
+
+
+def _format_markdown_tables(lines: Sequence[str]) -> list[str]:
+    """Align generated Markdown tables for direct human inspection."""
+
+    formatted: list[str] = []
+    line_idx = 0
+    while line_idx < len(lines):
+        if line_idx + 1 >= len(lines):
+            formatted.append(lines[line_idx])
+            break
+        header = _markdown_cells(lines[line_idx])
+        separator = _markdown_cells(lines[line_idx + 1])
+        if header is None or separator is None or not _is_table_separator(separator):
+            formatted.append(lines[line_idx])
+            line_idx += 1
+            continue
+        table = [header]
+        line_idx += 2
+        while line_idx < len(lines):
+            cells = _markdown_cells(lines[line_idx])
+            if cells is None or len(cells) != len(header):
+                break
+            table.append(cells)
+            line_idx += 1
+        formatted.extend(_aligned_table(table, separator))
+    return formatted
+
+
+def _markdown_cells(line: str) -> list[str] | None:
+    stripped = line.strip()
+    if not stripped.startswith("|") or not stripped.endswith("|"):
+        return None
+    return [cell.strip() for cell in stripped[1:-1].split("|")]
+
+
+def _is_table_separator(cells: Sequence[str]) -> bool:
+    return bool(cells) and all(
+        len(cell.strip(":")) >= 3 and not cell.strip(":").replace("-", "")
+        for cell in cells
+    )
+
+
+def _aligned_table(table: list[list[str]], separator: list[str]) -> list[str]:
+    widths = [
+        max(3, max(len(row[column]) for row in table))
+        for column in range(len(separator))
+    ]
+    alignments = [
+        (
+            "center"
+            if cell.startswith(":") and cell.endswith(":")
+            else "right"
+            if cell.endswith(":")
+            else "left"
+        )
+        for cell in separator
+    ]
+
+    def aligned_row(row: Sequence[str]) -> str:
+        cells = []
+        for value, width, alignment in zip(row, widths, alignments, strict=True):
+            if alignment == "right":
+                cells.append(value.rjust(width))
+            elif alignment == "center":
+                cells.append(value.center(width))
+            else:
+                cells.append(value.ljust(width))
+        return "| " + " | ".join(cells) + " |"
+
+    delimiter = []
+    for width, alignment in zip(widths, alignments, strict=True):
+        if alignment == "right":
+            delimiter.append("-" * (width - 1) + ":")
+        elif alignment == "center":
+            delimiter.append(":" + "-" * (width - 2) + ":")
+        else:
+            delimiter.append("-" * width)
+    return [aligned_row(table[0]), aligned_row(delimiter), *map(aligned_row, table[1:])]
 
 
 def _report_lines(
@@ -729,6 +765,21 @@ def _report_lines(
     quick: bool,
 ) -> list[str]:
     robustness_failures = int(robustness.get("fail", 0))
+    robustness_failure_label = (
+        f"{robustness_failures} failed diagnostic"
+        f"{'s' if robustness_failures != 1 else ''}"
+    )
+    if robustness_failures:
+        reliability_summary = (
+            "The remaining failed diagnostics stay visible in the detailed table. "
+            "They block a blanket robustness claim, but no longer describe the "
+            "default infinite-lambda path as failing."
+        )
+    else:
+        reliability_summary = (
+            "Every named robustness diagnostic passed; this remains evidence for "
+            "the tested cases rather than a universal solver guarantee."
+        )
     validity_failures = sum(
         int(row["failures"]) for row in validity if row["method_id"] != "bh"
     )
@@ -757,18 +808,19 @@ def _report_lines(
     performance_headline = _performance_headline(warm_rows, process_rows)
     lines = [
         "<!-- markdownlint-disable MD033 MD041 -->",
+        "",
         "# ihwkit benchmark report",
         "",
         f"Recorded: {datetime.now(UTC).isoformat(timespec='seconds')}",
         "",
-        "This is the current measurement baseline for correctness, R parity, statistical behavior, numerical robustness, speed, and process memory. It is a presentation of evidence before optimization, not an optimization claim or a combined winner score. Failed, unavailable, and scope-limited fits remain visible.",
+        "This is the current measurement baseline for correctness, R parity, statistical behavior, numerical robustness, speed, and process memory. It is a presentation of evidence, not a combined winner score. Failed and unavailable fits remain visible.",
         "",
         "## Method labels used throughout",
         "",
         "| label | implementation | role in this report |",
         "|---|---|---|",
         "| **ihwkit** | current installable NumPy + Numba method | subject under evaluation |",
-        "| **NumPy reference** | retained pre-transition dense NumPy simplex | correctness and scaling reference, not installable API |",
+        "| **NumPy reference** | NumPy-only direct default plus dense finite-lambda simplex | correctness and scaling reference, not installable API |",
         "| **SciPy/HiGHS** | retained implementation using SciPy's HiGHS solver | numerical and performance reference; never a fallback |",
         "| **pyihw** | public pyihw 0.2.0 package | external Python comparison |",
         "| **R IHW** | Bioconductor IHW 1.40.0 | fixed parity authority and external timing comparison |",
@@ -783,16 +835,16 @@ def _report_lines(
         f"| repository tests | {test_status} | {test_summary} |",
         f"| generated correctness | {'pass' if correctness_pass else 'fail'} | finite output and structural invariants on named cases |",
         f"| fixed R parity | {'pass' if parity_pass else 'fail'} | strong agreement inside the declared fixed synthetic envelope |",
-        f"| numerical robustness | {robustness_failures} failed diagnostics | current release blocker; no fallback concealed the failures |",
+        f"| numerical robustness | {robustness_failure_label} | current release blocker; no fallback concealed the failures |",
         f"| validity study | {validity_failures} failed ihwkit fits | FDR and power remain conditional on successful fits |",
         f"| FDR screen | {fdr_above_nominal}/{len(production_validity)} intervals wholly above 0.10 | no clear inflation in these named scenarios; not a universal guarantee |",
         f"| paired power | {materially_positive_power}/{paired_power_scenarios} intervals wholly above zero | gains in three scenarios and a loss in the dense-covariate scenario |",
-        f"| performance | {len(process_rows)} process rows + {len(warm_rows)} warmed rows | baseline for later profiling, not evidence of completed optimization |",
+        f"| performance | {len(process_rows)} process rows + {len(warm_rows)} warmed rows | current direct-default measurements; no universal speed claim |",
         "",
         "### Direct reading",
         "",
         "- **Numerical agreement is strong where it is defined.** The fixed five-fold synthetic replay agrees with R IHW in rejection decisions and full output vectors at errors far below the declared tolerance.",
-        "- **Numerical reliability is not finished.** Three airway configurations, the named seed-2034 stress case, and additional validity draws report false LP infeasibility. That blocks a replacement claim regardless of speed.",
+        f"- **Numerical reliability is not finished.** {reliability_summary}",
         f"- **The development-scale statistical result is encouraging but conditional.** This is {'a quick wiring run' if quick else '1,000 replicates per null scenario and 200 per alternative scenario'}; {validity_failures} ihwkit failures are reported separately instead of converted to zero discoveries.",
         f"- **Performance is mixed and size-dependent.** {performance_headline}",
         f"- **The peer timing environment {'matches this study' if not environment_differences else 'differs on ' + ', '.join(environment_differences)}.** Peer measurements are reused only while that human-readable environment and protocol remain applicable.",
@@ -817,7 +869,7 @@ def _report_lines(
         "",
         "Each row is one explicit hypothesis-family size; point position is the sample mean and horizontal timing whiskers are +/- one sample standard deviation. Warmed Python fits remain inside one benchmark process after input construction. R IHW still includes serialization, the adapter, and an R process launch. Complete-process measurements launch a fresh command and therefore include startup, imports, deterministic input generation, solver work, and Numba initialization. Peak RSS is whole-process memory.",
         "",
-        "The main scaling figures use exactly 5k, 15k, and 50k hypotheses, shown as explicit axis labels. The one-bin n=500 startup floor remains in the detailed tables but is excluded from the scaling figures. The NumPy reference is measured through 15k; its 50k preflight exceeded two minutes and remains an explicit scope-limited cell rather than a fabricated point.",
+        "The main scaling figures use exactly 5k, 15k, and 50k hypotheses, shown as explicit axis labels. The one-bin n=500 startup floor remains in the detailed tables but is excluded from the scaling figures.",
         "",
         "## Relative compute cost",
         "",
@@ -826,7 +878,7 @@ def _report_lines(
             "Peer-to-ihwkit ratios for warmed-fit time, complete-process time, and peak RSS",
         ),
         "",
-        "Every endpoint divides a peer mean by the ihwkit mean on the same input. The orange 1x line is equal measured cost: timing points left of it favor the peer, while points to the right favor ihwkit; memory points to the left use less RSS than ihwkit. Lines expose the magnitude and direction of each comparison without replacing the absolute measurements above. The open NumPy arrows at 50k are lower bounds from its greater-than-two-minute preflight, not fabricated timing samples.",
+        "Every endpoint divides a peer mean by the ihwkit mean on the same input. The orange 1x line is equal measured cost: timing points left of it favor the peer, while points to the right favor ihwkit; memory points to the left use less RSS than ihwkit. Lines expose the magnitude and direction of each comparison without replacing the absolute measurements above.",
         "",
         "## Detailed statistical results",
         "",
@@ -859,15 +911,14 @@ def _report_lines(
     lines.extend(
         [
             "",
-            "## Performance interpretation before optimization",
+            "## Performance interpretation",
             "",
-            "This round measures and presents the baseline; it does not change the production algorithm. The evidence identifies what later profiling must explain without guessing at causes:",
+            "The default infinite-lambda path solves the separable Grenander allocation directly. Finite-lambda fits still use the general dense LP, so this optimization does not erase their numerical failures or imply a universal solver claim.",
             "",
-            "- **Warm fit:** ihwkit leads at 5k but pyihw leads at 50k. The crossover means the present implementation does not support a blanket speed claim.",
-            "- **Complete process:** ihwkit currently pays the largest wall-time and memory cost at both headline sizes. Import, JIT, input construction, and fitting are intentionally combined here because that is what a new command experiences.",
+            f"- **Measured position:** {performance_headline}",
+            "- **Complete process:** Import, JIT, input construction, and fitting are intentionally combined because that is what a new command experiences.",
             "- **Scope contrast:** process divided by warmed-fit time is descriptive, not a pure startup decomposition. A large factor says that fit-only timing cannot explain command latency; it does not assign the difference to one component.",
-            "- **Reliability first:** the false-infeasibility failures must be understood before performance work can support a release claim. A faster solver that fails valid cases is not an improvement.",
-            "- **Next optimization evidence:** profile import/JIT initialization, binning and Grenander work, LP construction and solve time, cross-fold repetition, and final BH adjustment separately; profile allocations independently from whole-process RSS.",
+            "- **Remaining numerical boundary:** the finite-lambda airway failure stays visible and blocks a blanket robustness claim.",
             "",
             "### Representative measurements at 5k hypotheses",
             "",
@@ -892,7 +943,7 @@ def _report_lines(
             "The label key at the start of this report defines every implementation. SciPy/HiGHS is a retained comparison and never a production dependency or fallback. BH is a truth-labelled simulation baseline, not a solver-performance peer. pyihw participates in generated-input timing but cannot accept the fixed covariate groups required for stored-vector parity.",
             "",
             f"All timed IHW lanes use alpha 0.1, five folds, automatic bin count, infinite lambda, seed 42, {int(_mapping(baseline['configuration'])['warmups'])} warmups, and {int(_mapping(baseline['configuration'])['samples'])} measured samples. Exact parity instead uses the fixed R groups, folds, and fold lambdas stored with the reference.",
-            "The dense NumPy reference is measured through 15k. Its 50k preflight exceeded the two-minute method limit, so both timing scopes retain an explicit scope-limited row at 50k.",
+            "The NumPy reference uses the same direct infinite-lambda allocation without Numba and is measured at every displayed size.",
             "",
             "The n=500 automatic configuration has one bin. R IHW correctly reduces that case to ordinary BH with one effective fold-lambda value; the adapter preserves that result. Because this is a one-bin shortcut dominated by startup, it remains in the detailed tables but not the main scaling figures.",
             "",
@@ -972,7 +1023,7 @@ def _report_lines(
     lines.extend(
         [
             "",
-            "Weighted BH using stored R weights passes on the airway rows, so the observed production error occurs before final p-value adjustment. Successful peer fits show that a production failure is not evidence that the mathematical LP is infeasible.",
+            "Weighted BH using stored R weights passes on every airway row. The remaining finite-lambda `airway_auto` error occurs before final p-value adjustment, while both infinite-lambda airway fits now pass. Successful peer fits show that a production failure is not evidence that the mathematical LP is infeasible.",
             "",
             "</details>",
             "",
@@ -1341,6 +1392,14 @@ def _statistical_figure(
 ) -> None:
     from matplotlib.lines import Line2D
 
+    failed_fits = sum(
+        int(row["failures"]) for row in validity if row["method_id"] == "ihw_inf_cv"
+    )
+    failure_note = (
+        "No ihwkit fit failures in these named simulations"
+        if failed_fits == 0
+        else f"{failed_fits} failed ihwkit fits stay outside paired summaries"
+    )
     figure = plt.figure(figsize=(16, 7.2))
     grid = figure.add_gridspec(
         1,
@@ -1548,7 +1607,7 @@ def _statistical_figure(
             (
                 "Uncertainty",
                 "Whiskers = 95% Monte Carlo intervals",
-                "11 failed ihwkit fits stay outside paired summaries",
+                failure_note,
             ),
             (
                 "Reference",
@@ -1631,7 +1690,6 @@ def _absolute_cost_figure(
         field="wall_mean_ns",
         divisor=1e9,
         error_field="wall_std_ns",
-        scope_cap=25.0,
     )
     warm_axis.set_xscale("log")
     warm_axis.set_xlim(0.003, 30)
@@ -1646,7 +1704,6 @@ def _absolute_cost_figure(
         field="wall_mean_ns",
         divisor=1e9,
         error_field="wall_std_ns",
-        scope_cap=25.0,
     )
     process_axis.set_xscale("log")
     process_axis.set_xlim(0.25, 30)
@@ -1713,7 +1770,7 @@ def _absolute_cost_figure(
             (
                 "Scope",
                 "5k | 15k | 50k hypotheses | automatic bins",
-                "Open arrow = NumPy 50k preflight exceeded 120 seconds",
+                "All methods measured at every displayed size",
             ),
             (
                 "Interpretation",
@@ -1794,7 +1851,6 @@ def _relative_cost_figure(
         theme,
         centers,
         field="wall_mean_ns",
-        preflight_seconds=120.0,
     )
     warm_axis.set_xscale("log")
     warm_axis.set_xlim(0.3, 512)
@@ -1807,7 +1863,6 @@ def _relative_cost_figure(
         theme,
         centers,
         field="wall_mean_ns",
-        preflight_seconds=120.0,
     )
     process_axis.set_xscale("log")
     process_axis.set_xlim(0.2, 128)
@@ -1881,8 +1936,8 @@ def _relative_cost_figure(
             ),
             (
                 "Scope",
-                "NumPy is measured through 15k hypotheses",
-                "Its 50k timing arrows are lower bounds from a >120 s preflight",
+                "All methods are measured at 5k, 15k, and 50k hypotheses",
+                "The one-bin 500-hypothesis startup floor stays in the table",
             ),
             (
                 "Reading",
@@ -1903,7 +1958,6 @@ def _absolute_points(
     field: str,
     divisor: float,
     error_field: str | None = None,
-    scope_cap: float | None = None,
 ) -> None:
     offsets = dict(zip(METHODS, np.linspace(0.27, -0.27, len(METHODS)), strict=True))
     for size, center in centers.items():
@@ -1943,33 +1997,6 @@ def _absolute_points(
                     linewidth=0,
                     zorder=4 if method_id == PRODUCTION else 3,
                 )
-            elif (
-                row.status == "scope_limited"
-                and method_id == "ihwkit_numpy"
-                and scope_cap is not None
-                and field == "wall_mean_ns"
-            ):
-                axis.scatter(
-                    scope_cap,
-                    position,
-                    marker=">",
-                    s=38,
-                    facecolor=theme.background,
-                    edgecolor=color,
-                    linewidth=1.2,
-                    zorder=3,
-                )
-                axis.annotate(
-                    ">120 s",
-                    (scope_cap, position),
-                    xytext=(-7, 0),
-                    textcoords="offset points",
-                    ha="right",
-                    va="center",
-                    fontsize=6.7,
-                    fontweight="bold",
-                    color=color,
-                )
 
 
 def _relative_points(
@@ -1979,7 +2006,6 @@ def _relative_points(
     centers: Mapping[int, float],
     *,
     field: str,
-    preflight_seconds: float | None = None,
 ) -> None:
     production = {
         row.size: float(getattr(row, field))
@@ -2037,43 +2063,6 @@ def _relative_points(
                     color=color,
                     zorder=3,
                 )
-            elif (
-                row.status == "scope_limited"
-                and method_id == "ihwkit_numpy"
-                and preflight_seconds is not None
-                and field == "wall_mean_ns"
-            ):
-                lower_bound = preflight_seconds * 1e9 / production[size]
-                axis.plot(
-                    [1.0, lower_bound],
-                    [position, position],
-                    color=color,
-                    linewidth=1.1,
-                    linestyle=(0, (3, 3)),
-                    alpha=0.65,
-                    zorder=2,
-                )
-                axis.scatter(
-                    lower_bound,
-                    position,
-                    marker=">",
-                    s=38,
-                    facecolor=theme.background,
-                    edgecolor=color,
-                    linewidth=1.2,
-                    zorder=3,
-                )
-                axis.annotate(
-                    f">{lower_bound:.0f}x",
-                    (lower_bound, position),
-                    xytext=(-7, 0),
-                    textcoords="offset points",
-                    ha="right",
-                    va="center",
-                    fontsize=6.7,
-                    fontweight="bold",
-                    color=color,
-                )
 
 
 def _method_legend(
@@ -2111,10 +2100,16 @@ def _method_legend(
 
 
 def _save_figure(figure: object, name: str) -> None:
+    path = FIGURE_DIR / name
     figure.savefig(
-        FIGURE_DIR / name,
+        path,
         format="svg",
         metadata={"Creator": "ihwkit benchmark report", "Date": None},
+    )
+    svg = path.read_text(encoding="utf-8")
+    path.write_text(
+        "\n".join(line.rstrip() for line in svg.splitlines()) + "\n",
+        encoding="utf-8",
     )
     import matplotlib.pyplot as plt
 
