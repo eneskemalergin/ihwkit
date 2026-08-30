@@ -122,6 +122,68 @@ def _thresholds_to_weights(thresholds: np.ndarray, m_groups: np.ndarray) -> np.n
     return thresholds * m / denom
 
 
+def _unregularized_weights(
+    grenander_list: list[tuple[FloatArray, FloatArray, FloatArray]],
+    alpha: float,
+    m_groups: np.ndarray,
+    adjustment_type: str,
+) -> FloatArray:
+    """Solve the separable infinite-lambda problem without a dense LP.
+
+    Each Grenander estimate is a concave piecewise-linear curve. Without a finite regularization constraint, the bins interact only through the BH or Bonferroni budget. Taking all curve segments in decreasing slope order is therefore the exact continuous-knapsack solution.
+    """
+
+    nbins = len(grenander_list)
+    thresholds = np.zeros(nbins, dtype=np.float64)
+    base_values = np.zeros(nbins, dtype=np.float64)
+    segments: list[tuple[float, int, int, float]] = []
+    for group_idx, (x_knots, y_knots, slopes) in enumerate(grenander_list):
+        intercepts = y_knots - slopes * x_knots
+        base_values[group_idx] = np.clip(np.min(intercepts), 0.0, 2.0)
+        starts = np.zeros(slopes.shape[0], dtype=np.float64)
+        for segment_idx in range(1, slopes.shape[0]):
+            slope_drop = slopes[segment_idx - 1] - slopes[segment_idx]
+            if slope_drop > 0.0:
+                starts[segment_idx] = (
+                    intercepts[segment_idx] - intercepts[segment_idx - 1]
+                ) / slope_drop
+            else:
+                starts[segment_idx] = starts[segment_idx - 1]
+        starts = np.maximum.accumulate(np.clip(starts, 0.0, 2.0))
+        for segment_idx, slope in enumerate(slopes):
+            if slope <= 0.0:
+                continue
+            end = starts[segment_idx + 1] if segment_idx + 1 < starts.shape[0] else 2.0
+            end = min(end, (2.0 - intercepts[segment_idx]) / slope)
+            width = max(0.0, end - starts[segment_idx])
+            if width > 0.0 and m_groups[group_idx] > 0:
+                segments.append((-float(slope), group_idx, segment_idx, width))
+    segments.sort()
+
+    if adjustment_type == "bh":
+        residual = -alpha * float(np.sum(m_groups.astype(np.float64) * base_values))
+    elif adjustment_type == "bonferroni":
+        residual = -alpha
+    else:
+        raise IHWValidationError(f"Unknown adjustment_type: {adjustment_type!r}")
+    for negative_slope, group_idx, _segment_idx, width in segments:
+        slope = -negative_slope
+        mass = float(m_groups[group_idx])
+        if adjustment_type == "bh":
+            cost_rate = mass * (1.0 - alpha * slope)
+        else:
+            cost_rate = mass
+        if cost_rate <= 0.0:
+            take = width
+        else:
+            take = min(width, max(0.0, -residual) / cost_rate)
+        thresholds[group_idx] += take
+        residual += cost_rate * take
+        if take < width:
+            break
+    return _thresholds_to_weights(thresholds, m_groups)
+
+
 def _safe_divide(pvalues: np.ndarray, weights: np.ndarray) -> np.ndarray:
     out = np.empty_like(pvalues)
     out[pvalues == 0.0] = 0.0
@@ -451,6 +513,8 @@ def _ihw_convex(
         _grenander(pv, int(mg))
         for pv, mg in zip(clipped, m_groups_grenander, strict=True)
     ]
+    if lambda_ == np.inf:
+        return _unregularized_weights(grenander_list, alpha, m_groups, adjustment_type)
     n_constraints = sum(len(g[2]) for g in grenander_list)
     rows = np.zeros((n_constraints, 2 * nbins), dtype=np.float64)
     rhs = np.empty(n_constraints, dtype=np.float64)

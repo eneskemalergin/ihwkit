@@ -9,6 +9,7 @@ from ihw import (
     _p_adjust,
     _solve_lp_numpy,
     _thresholds_to_weights,
+    _unregularized_weights,
     adjust_ihw,
 )
 
@@ -525,7 +526,7 @@ def test_zero_weight_denom_raises() -> None:
     with pytest.raises(RuntimeError, match="weight denom"):
         _thresholds_to_weights(np.array([0.1, 0.2, 0.0]), np.array([0, 0, 10]))
 
-def test_weight_lp_failure_raises(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_finite_penalty_lp_failure_raises(monkeypatch: pytest.MonkeyPatch) -> None:
     import ihw as ihw_mod
 
     def fail(*args: object, **kwargs: object) -> np.ndarray:
@@ -536,9 +537,9 @@ def test_weight_lp_failure_raises(monkeypatch: pytest.MonkeyPatch) -> None:
     p = rng.uniform(size=40)
     x = rng.uniform(size=40)
     with pytest.raises(RuntimeError, match="weight LP did not solve"):
-        adjust_ihw(p, x, 0.1, nbins=4, seed=1)
+        adjust_ihw(p, x, 0.1, nbins=4, lambdas=np.array([1.0]), seed=1)
 
-def test_successful_lp_does_not_fall_back_to_uniform() -> None:
+def test_successful_weight_fit_does_not_fall_back_to_uniform() -> None:
     rng = np.random.default_rng(7)
     n = 80
     cov = rng.uniform(0.0, 3.0, size=n)
@@ -548,6 +549,42 @@ def test_successful_lp_does_not_fall_back_to_uniform() -> None:
     result = adjust_ihw(p, cov, 0.1, nbins=4, seed=1)
     assert np.all(np.isfinite(result.weights))
     assert not np.allclose(result.weights, 1.0)
+
+def test_unregularized_bh_allocation_follows_descending_slopes() -> None:
+    grenander = [
+        (
+            np.array([0.0, 0.05]),
+            np.array([0.0, 1.0]),
+            np.array([20.0, 0.0]),
+        ),
+        (
+            np.array([0.0, 0.5]),
+            np.array([0.0, 1.0]),
+            np.array([2.0, 0.0]),
+        ),
+    ]
+
+    weights = _unregularized_weights(grenander, 0.1, np.array([10, 10]), "bh")
+
+    np.testing.assert_allclose(weights, np.array([8.0 / 9.0, 10.0 / 9.0]))
+
+def test_unregularized_bonferroni_allocation_uses_fixed_budget() -> None:
+    grenander = [
+        (
+            np.array([0.0, 0.05]),
+            np.array([0.0, 1.0]),
+            np.array([20.0, 0.0]),
+        ),
+        (
+            np.array([0.0, 0.5]),
+            np.array([0.0, 1.0]),
+            np.array([2.0, 0.0]),
+        ),
+    ]
+
+    weights = _unregularized_weights(grenander, 0.1, np.array([10, 10]), "bonferroni")
+
+    np.testing.assert_allclose(weights, np.array([2.0, 0.0]))
 
 def test_bin_ties_follow_the_seed_not_the_fold_rng() -> None:
     rng = np.random.default_rng(0)
