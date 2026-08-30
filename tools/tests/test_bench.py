@@ -11,7 +11,10 @@ from bench.report import (
     TimingRow,
     _format_markdown_tables,
     _merge_current_and_peer_rows,
+    _padded_log_limits,
     _paired_validity,
+    _ratio_ticks,
+    _relative_metric_values,
     _scope_ratio,
 )
 from tools.benchmark_zebrac import DEFAULT_METHODS
@@ -114,6 +117,31 @@ def test_peer_baseline_merge_keeps_current_production_and_saved_peers() -> None:
         ("ihwkit", 12.0),
         ("ihwkit_scipy", 8.0),
     ]
+
+
+def test_relative_plot_limits_include_baseline_and_all_peer_ratios() -> None:
+    rows = [
+        _timing_row("ihwkit", 10.0),
+        _timing_row("ihwkit_scipy", 20.0),
+        _timing_row("pyihw", 30.0),
+        _timing_row("r_ihw", 80.0),
+    ]
+
+    ratios = _relative_metric_values(rows, "wall_mean_ns")
+    lower, upper = _padded_log_limits(ratios, reference=1.0)
+
+    assert ratios == [1.0, 2.0, 3.0, 8.0]
+    assert lower < min(ratios)
+    assert upper > max(ratios)
+    assert 1.0 in _ratio_ticks(lower, upper)
+
+
+def test_relative_memory_axis_keeps_ratios_above_one_visible() -> None:
+    lower, upper = _padded_log_limits([1.0, 1.8, 2.9], reference=1.0)
+
+    assert lower < 1.0
+    assert upper > 2.9
+    assert _ratio_ticks(lower, upper) == (1.0, 1.5, 2.0, 2.5, 3.0)
 
 
 def test_paired_validity_drops_failed_production_attempts() -> None:

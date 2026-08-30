@@ -868,7 +868,7 @@ def _report_lines(
             "Absolute warmed-fit time, complete-process time, and peak RSS at 5k, 15k, and 50k hypotheses",
         ),
         "",
-        "Each row is one explicit hypothesis-family size; point position is the sample mean and horizontal timing whiskers are +/- one sample standard deviation. Warmed Python fits remain inside one benchmark process after input construction. R IHW still includes serialization, the adapter, and an R process launch. Complete-process measurements launch a fresh command and therefore include startup, imports, deterministic input generation, fitting work, and any method-specific initialization. Peak RSS is whole-process memory.",
+        "Each row is one explicit hypothesis-family size; point position is the sample mean and horizontal timing whiskers are +/- one sample standard deviation. The warmed-fit panel uses logarithmic spacing because those measurements span orders of magnitude; complete-process time and RSS use zero-based linear axes. Warmed Python fits remain inside one benchmark process after input construction. R IHW still includes serialization, the adapter, and an R process launch. Complete-process measurements launch a fresh command and therefore include startup, imports, deterministic input generation, fitting work, and any method-specific initialization. Peak RSS is whole-process memory.",
         "",
         "The main scaling figures use exactly 5k, 15k, and 50k hypotheses, shown as explicit axis labels. The one-bin n=500 startup floor remains in the detailed tables but is excluded from the scaling figures.",
         "",
@@ -879,7 +879,7 @@ def _report_lines(
             "Peer-to-ihwkit ratios for warmed-fit time, complete-process time, and peak RSS",
         ),
         "",
-        "Every endpoint divides a peer mean by the ihwkit mean on the same input. The orange 1x line is equal measured cost: timing points left of it favor the peer, while points to the right favor ihwkit; memory points to the left use less RSS than ihwkit. Lines expose the magnitude and direction of each comparison without replacing the absolute measurements above.",
+        "Every peer endpoint divides its mean by the ihwkit mean on the same input. The orange circles and 1x line mark the ihwkit baseline: points left of it favor the peer, while points to the right favor ihwkit for both time and memory. All three ratio axes use logarithmic spacing, so the same multiplicative change occupies the same horizontal distance. Lines expose the magnitude and direction of each comparison without replacing the absolute measurements above.",
         "",
         "## Detailed statistical results",
         "",
@@ -1380,6 +1380,118 @@ def _clean_axis(axis: object, theme: FigureTheme) -> None:
     axis.set_axisbelow(True)
 
 
+def _successful_metric_values(
+    rows: Sequence[TimingRow], field: str, *, divisor: float = 1.0
+) -> list[float]:
+    """Return positive displayed values for one measured field."""
+
+    values: list[float] = []
+    for row in rows:
+        value = getattr(row, field)
+        if (
+            row.status == "ok"
+            and row.size in PLOT_SIZES
+            and value is not None
+            and float(value) > 0.0
+        ):
+            values.append(float(value) / divisor)
+    return values
+
+
+def _relative_metric_values(rows: Sequence[TimingRow], field: str) -> list[float]:
+    """Return displayed peer-to-production ratios, including the 1x baseline."""
+
+    production = {
+        row.size: float(getattr(row, field))
+        for row in rows
+        if row.method_id == PRODUCTION
+        and row.status == "ok"
+        and row.size in PLOT_SIZES
+        and getattr(row, field) is not None
+        and float(getattr(row, field)) > 0.0
+    }
+    ratios = [1.0]
+    for row in rows:
+        value = getattr(row, field)
+        if (
+            row.method_id in PEER_METHODS
+            and row.status == "ok"
+            and row.size in production
+            and value is not None
+            and float(value) > 0.0
+        ):
+            ratios.append(float(value) / production[row.size])
+    return ratios
+
+
+def _padded_log_limits(
+    values: Sequence[float], *, reference: float | None = None
+) -> tuple[float, float]:
+    """Return positive log-scale bounds with visible endpoint padding."""
+
+    positive = [float(value) for value in values if value > 0.0]
+    if reference is not None and reference > 0.0:
+        positive.append(reference)
+    if not positive:
+        raise ValueError("log-scale plot requires at least one positive value")
+    lower_log = math.log10(min(positive))
+    upper_log = math.log10(max(positive))
+    span = max(upper_log - lower_log, math.log10(1.5))
+    lower = 10 ** (lower_log - 0.08 * span)
+    upper = 10 ** (upper_log + 0.08 * span)
+    if reference is not None:
+        lower = min(lower, reference / 1.25)
+        upper = max(upper, reference * 1.25)
+    return lower, upper
+
+
+def _log_ticks(lower: float, upper: float) -> tuple[float, ...]:
+    """Return sparse 1-3 log ticks inside the displayed bounds."""
+
+    start = math.floor(math.log10(lower)) - 1
+    stop = math.ceil(math.log10(upper)) + 1
+    ticks: list[float] = []
+    for exponent in range(start, stop + 1):
+        for multiplier in (1.0, 3.0):
+            value = multiplier * 10**exponent
+            if lower <= value <= upper:
+                ticks.append(value)
+    return tuple(ticks)
+
+
+def _ratio_ticks(lower: float, upper: float) -> tuple[float, ...]:
+    """Return readable ticks for either a narrow or wide ratio range."""
+
+    if upper <= 6.0 and lower >= 0.1:
+        candidates = (0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 2.5, 3.0, 4.0, 5.0)
+    else:
+        candidates = (
+            0.01,
+            0.02,
+            0.05,
+            0.1,
+            0.2,
+            0.5,
+            1.0,
+            2.0,
+            5.0,
+            10.0,
+            20.0,
+            50.0,
+            100.0,
+            200.0,
+            500.0,
+            1000.0,
+        )
+    return tuple(value for value in candidates if lower <= value <= upper)
+
+
+def _format_time_tick(seconds: float) -> str:
+    """Format a positive time tick in milliseconds or seconds."""
+
+    return f"{seconds * 1000:g} ms" if seconds < 1.0 else f"{seconds:g} s"
+
+
 def _statistical_figure(
     plt: object,
     validity: Sequence[Mapping[str, str]],
@@ -1624,6 +1736,8 @@ def _absolute_cost_figure(
     suffix: str,
     theme: FigureTheme,
 ) -> None:
+    from matplotlib.ticker import FuncFormatter, MaxNLocator
+
     figure = plt.figure(figsize=(16, 7.2))
     grid = figure.add_gridspec(
         1,
@@ -1689,10 +1803,13 @@ def _absolute_cost_figure(
         divisor=1e9,
         error_field="wall_std_ns",
     )
+    warm_values = _successful_metric_values(warm_rows, "wall_mean_ns", divisor=1e9)
+    warm_limits = _padded_log_limits(warm_values)
     warm_axis.set_xscale("log")
-    warm_axis.set_xlim(0.003, 30)
-    warm_axis.set_xticks((0.01, 0.1, 1, 10))
-    warm_axis.set_xticklabels(("10 ms", "100 ms", "1 s", "10 s"))
+    warm_axis.set_xlim(*warm_limits)
+    warm_ticks = _log_ticks(*warm_limits)
+    warm_axis.set_xticks(warm_ticks)
+    warm_axis.set_xticklabels(tuple(map(_format_time_tick, warm_ticks)))
     warm_axis.set_xlabel("Mean repeated-fit wall time")
     _absolute_points(
         process_axis,
@@ -1703,11 +1820,15 @@ def _absolute_cost_figure(
         divisor=1e9,
         error_field="wall_std_ns",
     )
-    process_axis.set_xscale("log")
-    process_axis.set_xlim(0.14, 30)
-    process_axis.set_xticks((0.15, 0.3, 1, 3, 10, 30))
-    process_axis.set_xticklabels(("0.15 s", "0.3 s", "1 s", "3 s", "10 s", "30 s"))
-    process_axis.set_xlabel("Mean complete-process wall time")
+    process_values = _successful_metric_values(
+        process_rows, "wall_mean_ns", divisor=1e9
+    )
+    process_axis.set_xlim(0.0, max(process_values) * 1.1)
+    process_axis.xaxis.set_major_locator(
+        MaxNLocator(nbins=5, steps=(1, 2, 2.5, 5, 10), min_n_ticks=4)
+    )
+    process_axis.xaxis.set_major_formatter(FuncFormatter(lambda value, _: f"{value:g}"))
+    process_axis.set_xlabel("Mean complete-process wall time (s)")
     _absolute_points(
         rss_axis,
         process_rows,
@@ -1716,10 +1837,14 @@ def _absolute_cost_figure(
         field="peak_rss_mean_bytes",
         divisor=1e6,
     )
-    rss_axis.set_xscale("log")
-    rss_axis.set_xlim(38, 235)
-    rss_axis.set_xticks((40, 60, 100, 150, 200))
-    rss_axis.set_xticklabels(("40", "60", "100", "150", "200"))
+    rss_values = _successful_metric_values(
+        process_rows, "peak_rss_mean_bytes", divisor=1e6
+    )
+    rss_axis.set_xlim(0.0, max(rss_values) * 1.1)
+    rss_axis.xaxis.set_major_locator(
+        MaxNLocator(nbins=5, steps=(1, 2, 2.5, 5, 10), min_n_ticks=4)
+    )
+    rss_axis.xaxis.set_major_formatter(FuncFormatter(lambda value, _: f"{value:g}"))
     rss_axis.set_xlabel("Mean peak RSS (MB)")
     for axis in (warm_axis, process_axis, rss_axis):
         axis.minorticks_off()
@@ -1772,7 +1897,7 @@ def _absolute_cost_figure(
             ),
             (
                 "Interpretation",
-                "Warm fit isolates repeated calls; process cost reflects a new command",
+                "Warm time is log scaled; process time and RSS start at zero",
                 "RSS is whole-process memory, not method allocation",
             ),
         ),
@@ -1806,7 +1931,7 @@ def _relative_cost_figure(
         figure,
         theme,
         title="Peer cost relative to ihwkit",
-        subtitle="Each point divides the peer mean by ihwkit on the same input | 1x is equal cost",
+        subtitle="Each peer endpoint divides its mean by ihwkit on the same input | 1x is equal cost",
         label="relative performance",
     )
     centers = {
@@ -1850,10 +1975,13 @@ def _relative_cost_figure(
         centers,
         field="wall_mean_ns",
     )
+    warm_ratios = _relative_metric_values(warm_rows, "wall_mean_ns")
+    warm_limits = _padded_log_limits(warm_ratios, reference=1.0)
     warm_axis.set_xscale("log")
-    warm_axis.set_xlim(0.3, 512)
-    warm_axis.set_xticks((0.5, 1, 2, 4, 8, 16, 64, 256))
-    warm_axis.set_xticklabels(("0.5x", "1x", "2x", "4x", "8x", "16x", "64x", "256x"))
+    warm_axis.set_xlim(*warm_limits)
+    warm_ticks = _ratio_ticks(*warm_limits)
+    warm_axis.set_xticks(warm_ticks)
+    warm_axis.set_xticklabels(tuple(f"{value:g}x" for value in warm_ticks))
     warm_axis.set_xlabel("Peer / ihwkit warmed-fit time")
     _relative_points(
         process_axis,
@@ -1862,12 +1990,13 @@ def _relative_cost_figure(
         centers,
         field="wall_mean_ns",
     )
+    process_ratios = _relative_metric_values(process_rows, "wall_mean_ns")
+    process_limits = _padded_log_limits(process_ratios, reference=1.0)
     process_axis.set_xscale("log")
-    process_axis.set_xlim(0.2, 128)
-    process_axis.set_xticks((0.25, 0.5, 1, 2, 4, 8, 32, 128))
-    process_axis.set_xticklabels(
-        ("0.25x", "0.5x", "1x", "2x", "4x", "8x", "32x", "128x")
-    )
+    process_axis.set_xlim(*process_limits)
+    process_ticks = _ratio_ticks(*process_limits)
+    process_axis.set_xticks(process_ticks)
+    process_axis.set_xticklabels(tuple(f"{value:g}x" for value in process_ticks))
     process_axis.set_xlabel("Peer / ihwkit complete-process time")
     _relative_points(
         rss_axis,
@@ -1876,10 +2005,13 @@ def _relative_cost_figure(
         centers,
         field="peak_rss_mean_bytes",
     )
+    rss_ratios = _relative_metric_values(process_rows, "peak_rss_mean_bytes")
+    rss_limits = _padded_log_limits(rss_ratios, reference=1.0)
     rss_axis.set_xscale("log")
-    rss_axis.set_xlim(0.18, 1.25)
-    rss_axis.set_xticks((0.2, 0.3, 0.5, 0.7, 1.0))
-    rss_axis.set_xticklabels(("0.2x", "0.3x", "0.5x", "0.7x", "1x"))
+    rss_axis.set_xlim(*rss_limits)
+    rss_ticks = _ratio_ticks(*rss_limits)
+    rss_axis.set_xticks(rss_ticks)
+    rss_axis.set_xticklabels(tuple(f"{value:g}x" for value in rss_ticks))
     rss_axis.set_xlabel("Peer / ihwkit peak RSS")
     for axis in (warm_axis, process_axis, rss_axis):
         axis.minorticks_off()
@@ -1920,9 +2052,9 @@ def _relative_cost_figure(
         rss_axis,
         theme,
         "Process memory",
-        "Left of 1x = peer uses less memory",
+        "Left of 1x = peer uses less | right of 1x = ihwkit uses less",
     )
-    _method_legend(figure, theme, peers_only=True)
+    _method_legend(figure, theme)
     _figure_footer(
         figure,
         theme,
@@ -1930,7 +2062,7 @@ def _relative_cost_figure(
             (
                 "Ratio rule",
                 "Peer mean divided by ihwkit mean on the same input",
-                "Orange 1x line = equal measured cost",
+                "Orange circles and 1x line = ihwkit baseline",
             ),
             (
                 "Scope",
@@ -1939,8 +2071,8 @@ def _relative_cost_figure(
             ),
             (
                 "Reading",
-                "Ratios show magnitude without replacing absolute values",
-                "No aggregate rank or winner score is computed",
+                "Log axes show multiplicative distance from 1x",
+                "Absolute values remain above; no aggregate score is computed",
             ),
         ),
     )
@@ -2013,17 +2145,15 @@ def _relative_points(
         and row.size in centers
         and getattr(row, field) is not None
     }
-    offsets = dict(
-        zip(PEER_METHODS, np.linspace(0.24, -0.24, len(PEER_METHODS)), strict=True)
-    )
+    offsets = dict(zip(METHODS, np.linspace(0.27, -0.27, len(METHODS)), strict=True))
     for size, center in centers.items():
         if size not in production:
             continue
         axis.scatter(
             1.0,
-            center,
-            marker="D",
-            s=34,
+            center + offsets[PRODUCTION],
+            marker=METHOD_MARKERS[PRODUCTION],
+            s=38,
             color=theme.method_colors[PRODUCTION],
             edgecolor=theme.ink,
             linewidth=0.8,
@@ -2063,12 +2193,9 @@ def _relative_points(
                 )
 
 
-def _method_legend(
-    figure: object, theme: FigureTheme, *, peers_only: bool = False
-) -> None:
+def _method_legend(figure: object, theme: FigureTheme) -> None:
     from matplotlib.lines import Line2D
 
-    methods = PEER_METHODS if peers_only else METHODS
     handles = [
         Line2D(
             [0],
@@ -2083,7 +2210,7 @@ def _method_legend(
             markersize=7,
             label=METHOD_LABELS[method_id],
         )
-        for method_id in methods
+        for method_id in METHODS
     ]
     figure.legend(
         handles=handles,

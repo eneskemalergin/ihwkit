@@ -2,7 +2,7 @@
 
 # ihwkit benchmark report
 
-Recorded: 2026-08-30T03:57:21+00:00
+Recorded: 2026-08-30T04:21:27+00:00
 
 This is the current measurement baseline for correctness, R parity, statistical behavior, numerical robustness, speed, and process memory. It is a presentation of evidence, not a combined winner score. Failed and unavailable fits remain visible.
 
@@ -73,7 +73,7 @@ FDR is the mean replicate false-discovery proportion. Under either all-null scen
   <img src="figures/02-process-cost-light.svg" alt="Absolute warmed-fit time, complete-process time, and peak RSS at 5k, 15k, and 50k hypotheses" width="100%">
 </picture>
 
-Each row is one explicit hypothesis-family size; point position is the sample mean and horizontal timing whiskers are +/- one sample standard deviation. Warmed Python fits remain inside one benchmark process after input construction. R IHW still includes serialization, the adapter, and an R process launch. Complete-process measurements launch a fresh command and therefore include startup, imports, deterministic input generation, fitting work, and any method-specific initialization. Peak RSS is whole-process memory.
+Each row is one explicit hypothesis-family size; point position is the sample mean and horizontal timing whiskers are +/- one sample standard deviation. The warmed-fit panel uses logarithmic spacing because those measurements span orders of magnitude; complete-process time and RSS use zero-based linear axes. Warmed Python fits remain inside one benchmark process after input construction. R IHW still includes serialization, the adapter, and an R process launch. Complete-process measurements launch a fresh command and therefore include startup, imports, deterministic input generation, fitting work, and any method-specific initialization. Peak RSS is whole-process memory.
 
 The main scaling figures use exactly 5k, 15k, and 50k hypotheses, shown as explicit axis labels. The one-bin n=500 startup floor remains in the detailed tables but is excluded from the scaling figures.
 
@@ -85,7 +85,7 @@ The main scaling figures use exactly 5k, 15k, and 50k hypotheses, shown as expli
   <img src="figures/03-warm-fit-light.svg" alt="Peer-to-ihwkit ratios for warmed-fit time, complete-process time, and peak RSS" width="100%">
 </picture>
 
-Every endpoint divides a peer mean by the ihwkit mean on the same input. The orange 1x line is equal measured cost: timing points left of it favor the peer, while points to the right favor ihwkit; memory points to the left use less RSS than ihwkit. Lines expose the magnitude and direction of each comparison without replacing the absolute measurements above.
+Every peer endpoint divides its mean by the ihwkit mean on the same input. The orange circles and 1x line mark the ihwkit baseline: points left of it favor the peer, while points to the right favor ihwkit for both time and memory. All three ratio axes use logarithmic spacing, so the same multiplicative change occupies the same horizontal distance. Lines expose the magnitude and direction of each comparison without replacing the absolute measurements above.
 
 ## Detailed statistical results
 
