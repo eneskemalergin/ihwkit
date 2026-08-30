@@ -9,6 +9,7 @@ from bench.report import (
     METHOD_LABELS,
     PLOT_SIZES,
     TimingRow,
+    _format_markdown_tables,
     _merge_current_and_peer_rows,
     _paired_validity,
     _scope_ratio,
@@ -73,6 +74,24 @@ def test_performance_defaults_to_the_changing_method_only() -> None:
 def test_report_uses_short_production_label_and_explicit_scaling_sizes() -> None:
     assert METHOD_LABELS["ihwkit_numpy_numba"] == "ihwkit"
     assert PLOT_SIZES == (5_000, 15_000, 50_000)
+
+
+def test_generated_markdown_tables_are_human_aligned() -> None:
+    lines = [
+        "| method | time |",
+        "|---|---:|",
+        "| ihwkit | 2.0 ms |",
+        "| NumPy reference | 20.0 ms |",
+    ]
+
+    formatted = _format_markdown_tables(lines)
+
+    assert formatted == [
+        "| method          |    time |",
+        "| --------------- | ------: |",
+        "| ihwkit          |  2.0 ms |",
+        "| NumPy reference | 20.0 ms |",
+    ]
 
 
 def test_scope_ratio_is_human_readable() -> None:

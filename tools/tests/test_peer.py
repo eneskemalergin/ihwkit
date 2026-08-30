@@ -12,14 +12,18 @@ from pathlib import Path
 import numpy as np
 
 from ihw import IHWResult, _p_adjust, _safe_divide, adjust_ihw
+from tools import peer_legacy
 from tools.peer import (
     PARITY_GATE_IDS,
     REFERENCE_IDS,
     ReferenceRecord,
+    RunConfig,
     _r_output_fold_count,
+    fit,
     load_peer_input,
     load_reference,
 )
+from tools.simulators import SCENARIO_BUILDERS
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -89,6 +93,24 @@ def test_production_fit_on_generated_input() -> None:
     )
     assert np.all(np.isfinite(result.weights))
     assert np.all(np.isfinite(result.adj_pvalues))
+
+
+def test_numpy_reference_finite_lp_uses_correct_vectorized_pivots() -> None:
+    """The NumPy-only finite-lambda solver retains the LP optimum."""
+
+    objective = np.array([3.0, 4.0])
+    constraints = np.array([[1.0, 2.0], [3.0, 1.0]])
+    bounds = np.array([8.0, 9.0])
+    solution = peer_legacy._solve_lp_numpy(
+        objective,
+        constraints,
+        bounds,
+        np.zeros(2),
+        np.full(2, np.inf),
+        use_numba=False,
+    )
+
+    np.testing.assert_allclose(solution, np.array([2.0, 3.0]), atol=1e-8)
 
 
 def test_auto_lambda_on_generated_input_is_finite() -> None:
@@ -206,6 +228,66 @@ def test_production_path_matches_frozen_r_records() -> None:
         )
         assert int(np.sum(result.adj_pvalues <= 0.1)) == record.r_rejections
         np.testing.assert_array_equal(result.folds, record.peer_input.folds)
+
+
+def test_unregularized_production_matches_frozen_airway_vectors() -> None:
+    """The direct default path handles the retained real-data shape."""
+
+    for reference_id in ("airway_inf_n1", "airway_inf_n5"):
+        record = load_reference(reference_id)
+        result = _fit_reference(record)
+        np.testing.assert_allclose(
+            result.adj_pvalues,
+            record.adjusted_pvalues,
+            atol=1e-8,
+            rtol=1e-6,
+        )
+        np.testing.assert_allclose(
+            result.weights,
+            record.weights,
+            atol=1e-8,
+            rtol=1e-6,
+        )
+
+
+def test_unregularized_numpy_reference_matches_frozen_r_vectors() -> None:
+    """The NumPy-only direct path retains fixed-vector parity."""
+
+    record = load_reference("sim_5000_inf_n5")
+    result = fit(
+        "ihwkit_numpy",
+        record.peer_input,
+        RunConfig(alpha=0.1, nbins=3, nfolds=5, lambda_policy="inf", seed=42),
+    )
+    np.testing.assert_allclose(
+        result.adjusted_pvalues,
+        record.adjusted_pvalues,
+        atol=1e-8,
+        rtol=1e-6,
+    )
+    assert result.weights is not None
+    np.testing.assert_allclose(
+        result.weights,
+        record.weights,
+        atol=1e-8,
+        rtol=1e-6,
+    )
+
+
+def test_known_default_false_infeasibility_is_resolved() -> None:
+    """The seed-2034 feasible default fit remains a regression case."""
+
+    draw = SCENARIO_BUILDERS["mixture_mild"](3_000, 2_034)
+    result = adjust_ihw(
+        draw.pvalues,
+        draw.covariates,
+        0.1,
+        nfolds=5,
+        seed=2_034,
+    )
+
+    assert int(np.sum(result.adj_pvalues <= 0.1)) == 51
+    np.testing.assert_allclose(np.mean(result.weights), 1.0)
 
 
 def test_bh_on_r_weights_matches_frozen_r_records() -> None:
