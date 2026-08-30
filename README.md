@@ -4,12 +4,18 @@ Independent Hypothesis Weighting for covariate-weighted multiple testing.
 
 ## Runtime
 
-The installable library has one implementation: NumPy arrays and required Numba kernels. The default infinite-lambda fit solves the separable Grenander allocation directly; finite-lambda fits retain the dense simplex solver in `src/ihw.py`. SciPy is not an installable runtime dependency and is not a hidden fallback.
+The installable library has one implementation in `src/ihw.py`. Its default infinite-lambda fit uses a NumPy-only direct Grenander allocation and does not import Numba. Explicit finite-lambda fits retain the dense simplex solver and lazily require the optional Numba extra. SciPy is not an installable dependency and is not a hidden fallback.
 
-The supported runtime is Python 3.12 or newer with NumPy and Numba. Install the project from the repository root in an active environment:
+The supported base runtime is Python 3.12 or newer with NumPy. Install the default method from the repository root in an active environment:
 
 ```bash
 python -m pip install -e .
+```
+
+Install finite-lambda support only when it is needed:
+
+```bash
+python -m pip install -e '.[finite]'
 ```
 
 The public entry point is `adjust_ihw`:
@@ -40,7 +46,7 @@ The public function has no solver or JIT switches. `lp_backend` and `use_numba` 
 
 The supported comparison methods are tool-owned and are not part of the installable API:
 
-- **`ihwkit_numpy_numba`:** the production library path.
+- **`ihwkit`:** the production low-memory NumPy default, with the lazy optional finite-lambda solver.
 - **`ihwkit_numpy`:** the NumPy-only reference, with the same direct default allocation and a retained dense finite-lambda simplex.
 - **`ihwkit_scipy`:** a pinned pre-transition SciPy HiGHS baseline.
 - **`pyihw`:** the reviewed public `pyihw` 0.2.0 API, using its `rng` and lambda conventions explicitly.
@@ -49,7 +55,7 @@ The supported comparison methods are tool-owned and are not part of the installa
 Run one method directly with:
 
 ```bash
-python tools/peer.py --method ihwkit_numpy_numba --dataset sim_5000_seed42
+python tools/peer.py --method ihwkit --dataset sim_5000_seed42
 ```
 
 Run the generated production correctness gate with:
@@ -97,7 +103,7 @@ Run a small process-level comparison with:
 python -m bench performance --dataset sim_5000_seed42 --duration 5000 --warmup 3 --min-samples 10 --max-samples 10
 ```
 
-The default measures only `ihwkit_numpy_numba`, because that is the implementation expected to change. Request comparisons explicitly with `--methods`, for example `--methods ihwkit_numpy_numba r_ihw`. Raw zebrac JSON and readable comparison metadata are written under ignored `tmp/results/`. The measurement includes process startup, input generation or loading, and any JIT initialization performed by a method. The full study reports these complete-process measurements separately from repeated fit calls after warmup.
+The default measures only `ihwkit`, because that is the implementation expected to change. Request comparisons explicitly with `--methods`, for example `--methods ihwkit r_ihw`. Raw zebrac JSON and readable comparison metadata are written under ignored `tmp/results/`. The measurement includes process startup, input generation or loading, and all initialization performed by a method. The full study reports these complete-process measurements separately from repeated fit calls after warmup.
 
 Run the full benchmark and regenerate the report with the optional peer and plotting environment:
 

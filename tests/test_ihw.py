@@ -1,3 +1,4 @@
+import builtins
 import inspect
 from math import erf, sqrt
 
@@ -6,6 +7,7 @@ import pytest
 
 from ihw import (
     IHWValidationError,
+    _isotonic_blocks,
     _p_adjust,
     _solve_lp_numpy,
     _thresholds_to_weights,
@@ -157,7 +159,7 @@ def test_public_api_has_no_backend_switches() -> None:
     assert "lp_backend" not in parameters
     assert "use_numba" not in parameters
 
-def test_default_numba_path_runs() -> None:
+def test_default_low_memory_path_runs() -> None:
     rng = np.random.default_rng(0)
     p = rng.uniform(size=80)
     x = rng.uniform(size=80)
@@ -165,6 +167,44 @@ def test_default_numba_path_runs() -> None:
     assert np.all(np.isfinite(result.weights))
     assert np.all(np.isfinite(result.adj_pvalues))
     np.testing.assert_allclose(np.mean(result.weights), 1.0, atol=1e-8)
+
+def test_default_path_does_not_import_numba(monkeypatch: pytest.MonkeyPatch) -> None:
+    original_import = builtins.__import__
+
+    def guarded_import(name: str, *args: object, **kwargs: object) -> object:
+        if name == "numba" or name.startswith("numba."):
+            raise AssertionError("the default path imported optional Numba")
+        return original_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", guarded_import)
+    rng = np.random.default_rng(19)
+    result = adjust_ihw(
+        rng.uniform(size=300),
+        rng.uniform(size=300),
+        0.1,
+        nbins=5,
+        nfolds=5,
+        seed=19,
+    )
+
+    assert np.all(np.isfinite(result.weights))
+
+def test_isotonic_blocks_pool_weighted_violations() -> None:
+    values, weights, counts = _isotonic_blocks(
+        np.array([1.0, 4.0, 3.0, 2.0, 5.0]), np.ones(5)
+    )
+
+    np.testing.assert_allclose(values, np.array([1.0, 3.0, 5.0]))
+    np.testing.assert_allclose(weights, np.array([1.0, 3.0, 1.0]))
+    np.testing.assert_array_equal(counts, np.array([1, 3, 1]))
+
+def test_isotonic_blocks_handles_a_cascading_worst_case() -> None:
+    source = np.concatenate((np.arange(10, dtype=np.float64), [-100.0]))
+    values, weights, counts = _isotonic_blocks(source, np.ones(source.size))
+
+    np.testing.assert_allclose(values, np.array([np.mean(source)]))
+    np.testing.assert_allclose(weights, np.array([11.0]))
+    np.testing.assert_array_equal(counts, np.array([11]))
 
 def test_single_bin_matches_bh() -> None:
     rng = np.random.default_rng(0)

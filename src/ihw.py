@@ -7,13 +7,6 @@ from dataclasses import dataclass
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
 
-try:
-    from numba import njit
-except ImportError as exc:
-    raise ImportError(
-        "ihwkit requires Numba for its production implementation"
-    ) from exc
-
 FloatArray = NDArray[np.float64]
 IntegerArray = NDArray[np.intp]
 
@@ -41,56 +34,71 @@ class IHWResult:
     m_groups: IntegerArray
 
 
-@njit(cache=False)
-def _iso_mean_loops(y: FloatArray, w: FloatArray) -> FloatArray:
-    n = y.shape[0]
-    if n == 1:
-        out0 = np.empty(1, dtype=np.float64)
-        out0[0] = y[0]
-        return out0
-    values = np.empty(n, dtype=np.float64)
-    weights = np.empty(n, dtype=np.float64)
-    counts = np.empty(n, dtype=np.int64)
-    k = 0
-    for i in range(n):
-        values[k] = y[i]
-        weights[k] = w[i]
-        counts[k] = 1
-        k += 1
-        while k >= 2 and values[k - 2] > values[k - 1]:
-            tw = weights[k - 2] + weights[k - 1]
-            values[k - 2] = (
-                weights[k - 2] * values[k - 2] + weights[k - 1] * values[k - 1]
-            ) / tw
-            weights[k - 2] = tw
-            counts[k - 2] += counts[k - 1]
-            k -= 1
-    out = np.empty(n, dtype=np.float64)
-    pos = 0
-    for i in range(k):
-        ck = counts[i]
-        vk = values[i]
-        for t in range(ck):
-            out[pos + t] = vk
-        pos += ck
-    return out
+def _isotonic_blocks(
+    values: np.ndarray, weights: np.ndarray
+) -> tuple[FloatArray, FloatArray, IntegerArray]:
+    """Pool adjacent violations and return one value per final block.
 
+    A few array-wide passes collapse the common long decreasing runs. The final stack pass preserves linear worst-case behavior when violations cascade one block at a time.
+    """
 
-def _iso_mean(y: np.ndarray, w: np.ndarray) -> FloatArray:
-    """Run the production Numba PAVA kernel on float64 arrays."""
+    block_values = np.asarray(values, dtype=np.float64).copy()
+    block_weights = np.asarray(weights, dtype=np.float64).copy()
+    block_counts = np.ones(block_values.shape[0], dtype=np.intp)
+    for _ in range(4):
+        if block_values.shape[0] <= 1:
+            return block_values, block_weights, block_counts
+        violations = block_values[:-1] > block_values[1:]
+        if not np.any(violations):
+            return block_values, block_weights, block_counts
+        starts = np.concatenate(([0], np.flatnonzero(~violations) + 1))
+        next_weights = np.add.reduceat(block_weights, starts)
+        block_values = (
+            np.add.reduceat(block_values * block_weights, starts) / next_weights
+        )
+        block_weights = next_weights
+        block_counts = np.add.reduceat(block_counts, starts)
 
-    return _iso_mean_loops(
-        np.asarray(y, dtype=np.float64), np.asarray(w, dtype=np.float64)
+    values_list = block_values.tolist()
+    weights_list = block_weights.tolist()
+    counts_list = block_counts.tolist()
+    blocks = 0
+    for index in range(len(values_list)):
+        values_list[blocks] = values_list[index]
+        weights_list[blocks] = weights_list[index]
+        counts_list[blocks] = counts_list[index]
+        blocks += 1
+        while blocks >= 2 and values_list[blocks - 2] > values_list[blocks - 1]:
+            total = weights_list[blocks - 2] + weights_list[blocks - 1]
+            values_list[blocks - 2] = (
+                weights_list[blocks - 2] * values_list[blocks - 2]
+                + weights_list[blocks - 1] * values_list[blocks - 1]
+            ) / total
+            weights_list[blocks - 2] = total
+            counts_list[blocks - 2] += counts_list[blocks - 1]
+            blocks -= 1
+    return (
+        np.asarray(values_list[:blocks], dtype=np.float64),
+        np.asarray(weights_list[:blocks], dtype=np.float64),
+        np.asarray(counts_list[:blocks], dtype=np.intp),
     )
 
 
 def _grenander(
     sorted_pvalues: FloatArray, m_total: int
 ) -> tuple[FloatArray, FloatArray, FloatArray]:
-    if sorted_pvalues.shape[0] == 0:
+    size = sorted_pvalues.shape[0]
+    if size == 0:
         return np.array([0.0]), np.array([0.0]), np.array([1.0])
-    unique_p, counts = np.unique(sorted_pvalues, return_counts=True)
-    ecdf = np.cumsum(counts, dtype=np.float64) / float(m_total)
+    distinct = sorted_pvalues[1:] != sorted_pvalues[:-1]
+    if np.all(distinct):
+        unique_p = sorted_pvalues
+        ecdf = np.arange(1, size + 1, dtype=np.float64) / float(m_total)
+    else:
+        starts = np.concatenate(([0], np.flatnonzero(distinct) + 1))
+        unique_p = sorted_pvalues[starts]
+        counts = np.diff(np.concatenate((starts, [size])))
+        ecdf = np.cumsum(counts, dtype=np.float64) / float(m_total)
     if unique_p[0] > 0.0:
         unique_p = np.concatenate(([0.0], unique_p))
         ecdf = np.concatenate(([0.0], ecdf))
@@ -98,18 +106,29 @@ def _grenander(
         unique_p = np.concatenate((unique_p, [1.0]))
         ecdf = np.concatenate((ecdf, [1.0]))
     dx = np.diff(unique_p)
-    dy = np.diff(ecdf)
-    rawslope = dy / dx
-    rawslope = np.where(np.isposinf(rawslope), np.finfo(np.float64).max, rawslope)
-    rawslope = np.where(np.isneginf(rawslope), -np.finfo(np.float64).max, rawslope)
-    slope = -_iso_mean(-rawslope, dx)
-    dup = np.concatenate(([True], slope[1:] != slope[:-1]))
-    x_knots = unique_p[np.concatenate([dup, [True]])]
-    dx_knots = np.diff(x_knots)
-    slope_knots = slope[dup]
-    y_knots = ecdf[0] + np.concatenate(([0.0], np.cumsum(dx_knots * slope_knots)))
-    n_seg = int(slope_knots.shape[0])
-    return np.delete(x_knots, n_seg - 1), np.delete(y_knots, n_seg - 1), slope_knots
+    slope_knots, block_widths, block_counts = _isotonic_blocks(
+        -np.diff(ecdf) / dx, dx
+    )
+    slope_knots = -slope_knots
+    distinct_slope = np.concatenate(
+        ([True], slope_knots[1:] != slope_knots[:-1])
+    )
+    if not np.all(distinct_slope):
+        starts = np.flatnonzero(distinct_slope)
+        slope_knots = slope_knots[starts]
+        block_widths = np.add.reduceat(block_widths, starts)
+        block_counts = np.add.reduceat(block_counts, starts)
+    ends = np.cumsum(block_counts)
+    full_x = unique_p[np.concatenate(([0], ends))]
+    full_y = ecdf[0] + np.concatenate(
+        ([0.0], np.cumsum(block_widths * slope_knots))
+    )
+    last_segment = int(slope_knots.shape[0]) - 1
+    return (
+        np.delete(full_x, last_segment),
+        np.delete(full_y, last_segment),
+        slope_knots,
+    )
 
 
 def _thresholds_to_weights(thresholds: np.ndarray, m_groups: np.ndarray) -> np.ndarray:
@@ -134,73 +153,87 @@ def _unregularized_weights(
     """
 
     nbins = len(grenander_list)
-    thresholds = np.zeros(nbins, dtype=np.float64)
-    base_values = np.zeros(nbins, dtype=np.float64)
-    segments: list[tuple[float, int, int, float]] = []
+    base_values = np.empty(nbins, dtype=np.float64)
+    slope_parts: list[FloatArray] = []
+    group_parts: list[IntegerArray] = []
+    width_parts: list[FloatArray] = []
     for group_idx, (x_knots, y_knots, slopes) in enumerate(grenander_list):
         intercepts = y_knots - slopes * x_knots
         base_values[group_idx] = np.clip(np.min(intercepts), 0.0, 2.0)
         starts = np.zeros(slopes.shape[0], dtype=np.float64)
-        for segment_idx in range(1, slopes.shape[0]):
-            slope_drop = slopes[segment_idx - 1] - slopes[segment_idx]
-            if slope_drop > 0.0:
-                starts[segment_idx] = (
-                    intercepts[segment_idx] - intercepts[segment_idx - 1]
-                ) / slope_drop
-            else:
-                starts[segment_idx] = starts[segment_idx - 1]
-        starts = np.maximum.accumulate(np.clip(starts, 0.0, 2.0))
-        for segment_idx, slope in enumerate(slopes):
-            if slope <= 0.0:
-                continue
-            end = starts[segment_idx + 1] if segment_idx + 1 < starts.shape[0] else 2.0
-            end = min(end, (2.0 - intercepts[segment_idx]) / slope)
-            width = max(0.0, end - starts[segment_idx])
-            if width > 0.0 and m_groups[group_idx] > 0:
-                segments.append((-float(slope), group_idx, segment_idx, width))
-    segments.sort()
-
+        if slopes.shape[0] > 1:
+            slope_drops = slopes[:-1] - slopes[1:]
+            np.divide(
+                intercepts[1:] - intercepts[:-1],
+                slope_drops,
+                out=starts[1:],
+                where=slope_drops > 0.0,
+            )
+        np.clip(starts, 0.0, 2.0, out=starts)
+        np.maximum.accumulate(starts, out=starts)
+        ends = np.empty_like(starts)
+        ends[:-1] = starts[1:]
+        ends[-1] = 2.0
+        positive = slopes > 0.0
+        caps = np.full_like(slopes, 2.0)
+        np.divide(2.0 - intercepts, slopes, out=caps, where=positive)
+        np.minimum(ends, caps, out=ends)
+        widths = np.maximum(0.0, ends - starts)
+        valid = positive & (widths > 0.0) & (m_groups[group_idx] > 0)
+        if np.any(valid):
+            slope_parts.append(slopes[valid])
+            group_parts.append(
+                np.full(int(np.sum(valid)), group_idx, dtype=np.intp)
+            )
+            width_parts.append(widths[valid])
+    if not slope_parts:
+        return np.ones(nbins, dtype=np.float64)
+    slopes = np.concatenate(slope_parts)
+    groups = np.concatenate(group_parts)
+    widths = np.concatenate(width_parts)
+    order = np.argsort(-slopes, kind="stable")
+    slopes = slopes[order]
+    groups = groups[order]
+    widths = widths[order]
+    masses = m_groups[groups].astype(np.float64)
     if adjustment_type == "bh":
-        residual = -alpha * float(np.sum(m_groups.astype(np.float64) * base_values))
+        residual = -alpha * float(np.dot(m_groups, base_values))
+        costs = masses * (1.0 - alpha * slopes)
     elif adjustment_type == "bonferroni":
         residual = -alpha
+        costs = masses
     else:
         raise IHWValidationError(f"Unknown adjustment_type: {adjustment_type!r}")
-    for negative_slope, group_idx, _segment_idx, width in segments:
-        slope = -negative_slope
-        mass = float(m_groups[group_idx])
-        if adjustment_type == "bh":
-            cost_rate = mass * (1.0 - alpha * slope)
-        else:
-            cost_rate = mass
-        if cost_rate <= 0.0:
-            take = width
-        else:
-            take = min(width, max(0.0, -residual) / cost_rate)
-        thresholds[group_idx] += take
-        residual += cost_rate * take
-        if take < width:
-            break
+    cumulative = residual + np.cumsum(costs * widths)
+    crossing = np.flatnonzero((costs > 0.0) & (cumulative >= 0.0))
+    taken = widths.copy()
+    if crossing.size:
+        stop = int(crossing[0])
+        before = residual if stop == 0 else float(cumulative[stop - 1])
+        taken[stop] = min(widths[stop], max(0.0, -before) / costs[stop])
+        taken[stop + 1 :] = 0.0
+    thresholds = np.bincount(groups, weights=taken, minlength=nbins)
     return _thresholds_to_weights(thresholds, m_groups)
 
 
 def _safe_divide(pvalues: np.ndarray, weights: np.ndarray) -> np.ndarray:
-    out = np.empty_like(pvalues)
+    out = np.ones_like(pvalues)
+    np.divide(pvalues, weights, out=out, where=weights != 0.0)
     out[pvalues == 0.0] = 0.0
-    zero_w = (pvalues != 0.0) & (weights == 0.0)
-    out[zero_w] = 1.0
-    valid = (pvalues != 0.0) & (weights != 0.0)
-    out[valid] = np.minimum(pvalues[valid] / weights[valid], 1.0)
+    np.minimum(out, 1.0, out=out)
     return out
 
 
 def _fdr_bh(pvalues: np.ndarray, n_tests: int) -> np.ndarray:
     m = len(pvalues)
-    order = np.argsort(pvalues)[::-1]
-    steps = n_tests / np.arange(n_tests, n_tests - m, -1)
-    q = np.minimum(1.0, np.minimum.accumulate(steps * pvalues[order]))
+    order = np.argsort(pvalues)
+    adjusted = pvalues[order]
+    adjusted *= n_tests
+    adjusted /= np.arange(1, m + 1)
+    np.minimum.accumulate(adjusted[::-1], out=adjusted[::-1])
+    np.minimum(adjusted, 1.0, out=adjusted)
     result = np.empty_like(pvalues)
-    result[order] = q
+    result[order] = adjusted
     return result
 
 
@@ -214,32 +247,34 @@ def _p_adjust(pvalues: np.ndarray, method: str, n_tests: int | None = None) -> n
     return _fdr_bh(p, n)
 
 
+def _restore_order(sorted_values: np.ndarray, order: np.ndarray) -> np.ndarray:
+    restored = np.empty_like(sorted_values)
+    restored[order] = sorted_values
+    return restored
+
+
 def _groups_by_filter(covariates: np.ndarray, nbins: int, rng: np.random.Generator) -> np.ndarray:
     n = covariates.shape[0]
     if n == 0:
         return np.array([], dtype=np.intp)
     order = np.argsort(covariates, kind="mergesort")
     cov_sorted = covariates[order]
-    ranks = np.empty(n, dtype=np.float64)
+    zero_based_ranks = np.empty(n, dtype=np.intp)
     if n == 1 or bool(np.all(cov_sorted[1:] != cov_sorted[:-1])):
-        ranks[order] = np.arange(1, n + 1, dtype=np.float64)
+        zero_based_ranks[order] = np.arange(n, dtype=np.intp)
     else:
         i = 0
         while i < n:
             j = i + 1
             while j < n and cov_sorted[j] == cov_sorted[i]:
                 j += 1
-            base = float(i + 1)
             block_len = j - i
             if block_len == 1:
-                ranks[order[i]] = base
+                zero_based_ranks[order[i]] = i
             else:
-                offs = rng.permutation(block_len).astype(np.float64)
-                for k in range(block_len):
-                    ranks[order[i + k]] = base + offs[k]
+                zero_based_ranks[order[i:j]] = i + rng.permutation(block_len)
             i = j
-    groups = np.ceil((ranks / n) * nbins).astype(np.intp) - 1
-    return np.clip(groups, 0, nbins - 1).astype(np.intp)
+    return ((zero_based_ranks + 1) * nbins - 1) // n
 
 
 def _assign_folds(n: int, nfolds: int, rng: np.random.Generator) -> np.ndarray:
@@ -267,8 +302,8 @@ def _split_pvalues_by_group(pvalues: np.ndarray, groups: np.ndarray, nbins: int)
 _LP_EPS = 1e-7
 _LP_FEAS_TOL = 1e-5
 _LP_MAX_ITER = 250000
+_simplex_tableau_jit = None
 
-@njit(cache=False)
 def _simplex_tableau_loops(
     tableau: FloatArray, basis: IntegerArray, eps: float, max_iter: int
 ) -> tuple[FloatArray, IntegerArray]:
@@ -325,8 +360,20 @@ def _simplex_tableau(
     eps: float,
     max_iter: int,
 ) -> tuple[FloatArray, list[int]]:
+    global _simplex_tableau_jit
+
+    if _simplex_tableau_jit is None:
+        try:
+            from numba import njit
+        except ImportError as exc:
+            raise ImportError(
+                "finite-lambda fits require optional Numba support; "
+                "install ihwkit[finite]"
+            ) from exc
+
+        _simplex_tableau_jit = njit(cache=False)(_simplex_tableau_loops)
     basis_arr = np.asarray(basis, dtype=np.int64)
-    tableau, basis_arr = _simplex_tableau_loops(
+    tableau, basis_arr = _simplex_tableau_jit(
         np.asarray(tableau, dtype=np.float64), basis_arr, float(eps), int(max_iter)
     )
     return tableau, [int(v) for v in basis_arr]
@@ -507,7 +554,12 @@ def _ihw_convex(
     nbins = len(split_sorted_pvalues)
     if lambda_ == 0.0:
         return np.ones(nbins, dtype=np.float64)
-    clipped = [np.where(pv > 1e-20, pv, 0.0).astype(np.float64) for pv in split_sorted_pvalues]
+    clipped = [
+        pv
+        if pv.shape[0] == 0 or pv[0] > 1e-20
+        else np.where(pv > 1e-20, pv, 0.0).astype(np.float64)
+        for pv in split_sorted_pvalues
+    ]
     m = int(np.sum(m_groups))
     grenander_list = [
         _grenander(pv, int(mg))
@@ -640,6 +692,89 @@ def _select_lambda(
     return float(lambdas[int(np.argmax(scores))])
 
 
+def _ihw_infinite(
+    sorted_groups: np.ndarray,
+    sorted_pvalues: np.ndarray,
+    alpha: float,
+    m_groups: np.ndarray,
+    penalty: str,
+    nfolds: int,
+    adjustment_type: str,
+    rng: np.random.Generator,
+    sorted_folds: np.ndarray | None,
+) -> dict[str, object]:
+    """Fit the default direct allocation from reusable group/fold slices."""
+
+    size = sorted_pvalues.shape[0]
+    nbins = m_groups.shape[0]
+    folds_prespecified = sorted_folds is not None
+    if sorted_folds is None:
+        sorted_folds = _assign_folds(size, nfolds, rng)
+    group_pvalues: list[FloatArray] = []
+    group_folds: list[IntegerArray] = []
+    for group in range(nbins):
+        group_mask = sorted_groups == group
+        group_pvalues.append(sorted_pvalues[group_mask])
+        group_folds.append(sorted_folds[group_mask])
+    m_groups_available = np.fromiter(
+        (values.size for values in group_pvalues), dtype=np.intp, count=nbins
+    )
+    fold_counts = np.zeros((nfolds, nbins), dtype=np.intp)
+    for group, folds_for_group in enumerate(group_folds):
+        fold_counts[:, group] = np.bincount(folds_for_group, minlength=nfolds)
+
+    sorted_weights = np.full(size, np.nan, dtype=np.float64)
+    for fold in range(nfolds):
+        fold_mask = sorted_folds == fold
+        if not np.any(fold_mask):
+            continue
+        if nfolds == 1:
+            train_split = group_pvalues
+            m_holdout = m_groups.copy()
+            m_train = m_groups.copy()
+        else:
+            train_split = [
+                values[folds_for_group != fold]
+                for values, folds_for_group in zip(
+                    group_pvalues, group_folds, strict=True
+                )
+            ]
+            train_counts = m_groups_available - fold_counts[fold]
+            if folds_prespecified:
+                m_holdout = fold_counts[fold].copy()
+            else:
+                m_holdout = (
+                    (m_groups - m_groups_available) / nfolds
+                    + m_groups_available
+                    - train_counts
+                ).astype(np.intp)
+            m_train = (m_groups - m_holdout).astype(np.intp)
+        np.maximum(m_holdout, 0, out=m_holdout)
+        np.maximum(m_train, 0, out=m_train)
+        weights = _ihw_convex(
+            train_split,
+            alpha,
+            m_holdout,
+            m_train,
+            penalty,
+            np.inf,
+            adjustment_type,
+        )
+        sorted_weights[fold_mask] = weights[sorted_groups[fold_mask]]
+    sorted_weighted = _safe_divide(sorted_pvalues, sorted_weights)
+    m_total = int(np.sum(m_groups))
+    pad_method = "fdr_bh" if adjustment_type == "bh" else "bonferroni"
+    sorted_adjusted = _p_adjust(sorted_weighted, pad_method, n_tests=m_total)
+    return {
+        "rjs": int(np.sum(sorted_adjusted <= alpha)),
+        "sorted_weighted_pvalues": sorted_weighted,
+        "sorted_adj_p": sorted_adjusted,
+        "sorted_weights": sorted_weights,
+        "sorted_folds": sorted_folds,
+        "fold_lambdas": np.full(nfolds, np.inf, dtype=np.float64),
+    }
+
+
 def _ihw_internal(
     sorted_groups: np.ndarray,
     sorted_pvalues: np.ndarray,
@@ -655,6 +790,26 @@ def _ihw_internal(
     sorted_folds: np.ndarray | None,
     preset_fold_lambdas: np.ndarray | None = None,
 ) -> dict[str, object]:
+    default_infinite = (
+        preset_fold_lambdas is None
+        and lambdas.shape == (1,)
+        and np.isposinf(lambdas[0])
+    ) or (
+        preset_fold_lambdas is not None
+        and np.all(np.isposinf(preset_fold_lambdas))
+    )
+    if default_infinite:
+        return _ihw_infinite(
+            sorted_groups,
+            sorted_pvalues,
+            alpha,
+            m_groups,
+            penalty,
+            nfolds,
+            adjustment_type,
+            rng,
+            sorted_folds,
+        )
     n = sorted_pvalues.shape[0]
     nbins = m_groups.shape[0]
     folds_prespecified = sorted_folds is not None
@@ -903,10 +1058,9 @@ def adjust_ihw(
     if nbins_i == 1:
         order = np.argsort(p)
         adj_sorted = _p_adjust(p[order], pad_method, n_tests=int(np.sum(m_groups_arr)))
-        inv = np.argsort(order)
         return IHWResult(
             pvalues=p,
-            adj_pvalues=adj_sorted[inv],
+            adj_pvalues=_restore_order(adj_sorted, order),
             weights=np.ones(n, dtype=np.float64),
             weighted_pvalues=p.copy(),
             groups=group_id,
@@ -965,14 +1119,21 @@ def adjust_ihw(
         sorted_folds,
         preset_lams,
     )
-    inv = np.argsort(order)
     return IHWResult(
         pvalues=p,
-        adj_pvalues=np.asarray(result["sorted_adj_p"], dtype=np.float64)[inv],
-        weights=np.asarray(result["sorted_weights"], dtype=np.float64)[inv],
-        weighted_pvalues=np.asarray(result["sorted_weighted_pvalues"], dtype=np.float64)[inv],
+        adj_pvalues=_restore_order(
+            np.asarray(result["sorted_adj_p"], dtype=np.float64), order
+        ),
+        weights=_restore_order(
+            np.asarray(result["sorted_weights"], dtype=np.float64), order
+        ),
+        weighted_pvalues=_restore_order(
+            np.asarray(result["sorted_weighted_pvalues"], dtype=np.float64), order
+        ),
         groups=group_id,
-        folds=np.asarray(result["sorted_folds"], dtype=np.intp)[inv],
+        folds=_restore_order(
+            np.asarray(result["sorted_folds"], dtype=np.intp), order
+        ),
         alpha=alpha,
         nbins=nbins_i,
         nfolds=eff_nfolds,

@@ -12,6 +12,7 @@ import sys
 import tempfile
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from functools import cache
 from pathlib import Path
 from typing import Literal
 
@@ -29,7 +30,7 @@ IntegerArray = NDArray[np.intp]
 BooleanArray = NDArray[np.bool_]
 LambdaPolicy = Literal["inf", "auto"]
 MethodId = Literal[
-    "ihwkit_numpy_numba",
+    "ihwkit",
     "ihwkit_numpy",
     "ihwkit_scipy",
     "pyihw",
@@ -37,7 +38,7 @@ MethodId = Literal[
 ]
 
 METHODS: tuple[MethodId, ...] = (
-    "ihwkit_numpy_numba",
+    "ihwkit",
     "ihwkit_numpy",
     "ihwkit_scipy",
     "pyihw",
@@ -382,7 +383,7 @@ def fit(method_id: MethodId, peer_input: PeerInput, config: RunConfig) -> FitRes
         If the comparison runs but fails or returns invalid output.
     """
 
-    if method_id == "ihwkit_numpy_numba":
+    if method_id == "ihwkit":
         result = _fit_production(peer_input, config)
     elif method_id == "ihwkit_numpy":
         result = _fit_legacy(peer_input, config, backend="numpy")
@@ -486,8 +487,6 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 
 def _fit_production(peer_input: PeerInput, config: RunConfig) -> FitResult:
-    if importlib.util.find_spec("numba") is None:
-        raise PeerUnavailable("numba is not installed")
     from ihw import adjust_ihw
 
     result = adjust_ihw(
@@ -501,7 +500,7 @@ def _fit_production(peer_input: PeerInput, config: RunConfig) -> FitResult:
 def _fit_legacy(
     peer_input: PeerInput, config: RunConfig, *, backend: Literal["numpy", "highs"]
 ) -> FitResult:
-    if backend == "highs" and importlib.util.find_spec("scipy") is None:
+    if backend == "highs" and not _importable("scipy"):
         raise PeerUnavailable("scipy is not installed")
     from tools import peer_legacy
 
@@ -518,9 +517,9 @@ def _fit_legacy(
 
 
 def _fit_pyihw(peer_input: PeerInput, config: RunConfig) -> FitResult:
-    if importlib.util.find_spec("pyihw") is None:
+    if not _importable("pyihw"):
         raise PeerUnavailable("pyihw 0.2.0 is not installed")
-    version = importlib.metadata.version("pyihw")
+    version = _version("pyihw")
     if version != "0.2.0":
         raise PeerUnavailable(f"pyihw 0.2.0 is supported; found {version}")
     if peer_input.groups is not None:
@@ -828,11 +827,17 @@ def _reference_lambdas(
     return value.copy()
 
 
+@cache
 def _version(package: str) -> str:
     try:
         return importlib.metadata.version(package)
     except importlib.metadata.PackageNotFoundError:
         return "working tree"
+
+
+@cache
+def _importable(package: str) -> bool:
+    return importlib.util.find_spec(package) is not None
 
 
 def _read_vector(path: Path) -> FloatArray:

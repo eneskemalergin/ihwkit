@@ -68,11 +68,11 @@ def test_benchmark_matrix_keeps_evidence_questions_separate() -> None:
 
 
 def test_performance_defaults_to_the_changing_method_only() -> None:
-    assert DEFAULT_METHODS == ("ihwkit_numpy_numba",)
+    assert DEFAULT_METHODS == ("ihwkit",)
 
 
 def test_report_uses_short_production_label_and_explicit_scaling_sizes() -> None:
-    assert METHOD_LABELS["ihwkit_numpy_numba"] == "ihwkit"
+    assert METHOD_LABELS["ihwkit"] == "ihwkit"
     assert PLOT_SIZES == (5_000, 15_000, 50_000)
 
 
@@ -95,23 +95,23 @@ def test_generated_markdown_tables_are_human_aligned() -> None:
 
 
 def test_scope_ratio_is_human_readable() -> None:
-    warm = _timing_row("ihwkit_numpy_numba", 12.0)
-    process = _timing_row("ihwkit_numpy_numba", 99.0)
+    warm = _timing_row("ihwkit", 12.0)
+    process = _timing_row("ihwkit", 99.0)
 
     assert _scope_ratio(warm, process) == "8.2x"
 
 
 def test_peer_baseline_merge_keeps_current_production_and_saved_peers() -> None:
-    current = [_timing_row("ihwkit_numpy_numba", 12.0)]
+    current = [_timing_row("ihwkit", 12.0)]
     saved = [
-        _timing_row("ihwkit_numpy_numba", 99.0),
+        _timing_row("ihwkit", 99.0),
         _timing_row("ihwkit_scipy", 8.0),
     ]
 
     merged = _merge_current_and_peer_rows(current, saved)
 
     assert [(row.method_id, row.wall_median_ns) for row in merged] == [
-        ("ihwkit_numpy_numba", 12.0),
+        ("ihwkit", 12.0),
         ("ihwkit_scipy", 8.0),
     ]
 

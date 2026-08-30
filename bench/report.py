@@ -57,20 +57,20 @@ SCENARIO_ORDER = (
     "ignatiadis",
     "dense_covariate",
 )
-PRODUCTION = "ihwkit_numpy_numba"
+PRODUCTION = "ihwkit"
 PEER_METHODS = tuple(method for method in METHODS if method != PRODUCTION)
 METHOD_LABELS = {
     "bh": "BH",
     "ihw_inf_cv": "ihwkit",
     "ihw_auto_cv": "ihwkit auto",
-    "ihwkit_numpy_numba": "ihwkit",
+    "ihwkit": "ihwkit",
     "ihwkit_numpy": "NumPy reference",
     "ihwkit_scipy": "SciPy/HiGHS",
     "pyihw": "pyihw",
     "r_ihw": "R IHW",
 }
 METHOD_MARKERS = {
-    "ihwkit_numpy_numba": "o",
+    "ihwkit": "o",
     "ihwkit_numpy": "s",
     "ihwkit_scipy": "^",
     "pyihw": "D",
@@ -819,7 +819,7 @@ def _report_lines(
         "",
         "| label | implementation | role in this report |",
         "|---|---|---|",
-        "| **ihwkit** | current installable NumPy + Numba method | subject under evaluation |",
+        "| **ihwkit** | installable low-memory NumPy default; optional finite-lambda Numba solver | subject under evaluation |",
         "| **NumPy reference** | NumPy-only direct default plus dense finite-lambda simplex | correctness and scaling reference, not installable API |",
         "| **SciPy/HiGHS** | retained implementation using SciPy's HiGHS solver | numerical and performance reference; never a fallback |",
         "| **pyihw** | public pyihw 0.2.0 package | external Python comparison |",
@@ -846,7 +846,7 @@ def _report_lines(
         "- **Numerical agreement is strong where it is defined.** The fixed five-fold synthetic replay agrees with R IHW in rejection decisions and full output vectors at errors far below the declared tolerance.",
         f"- **Numerical reliability is not finished.** {reliability_summary}",
         f"- **The development-scale statistical result is encouraging but conditional.** This is {'a quick wiring run' if quick else '1,000 replicates per null scenario and 200 per alternative scenario'}; {validity_failures} ihwkit failures are reported separately instead of converted to zero discoveries.",
-        f"- **Performance is mixed and size-dependent.** {performance_headline}",
+        f"- **Performance is favorable on the measured scaling inputs and remains size-dependent.** {performance_headline}",
         f"- **The peer timing environment {'matches this study' if not environment_differences else 'differs on ' + ', '.join(environment_differences)}.** Peer measurements are reused only while that human-readable environment and protocol remain applicable.",
         "",
         "## Statistical evidence",
@@ -867,7 +867,7 @@ def _report_lines(
             "Absolute warmed-fit time, complete-process time, and peak RSS at 5k, 15k, and 50k hypotheses",
         ),
         "",
-        "Each row is one explicit hypothesis-family size; point position is the sample mean and horizontal timing whiskers are +/- one sample standard deviation. Warmed Python fits remain inside one benchmark process after input construction. R IHW still includes serialization, the adapter, and an R process launch. Complete-process measurements launch a fresh command and therefore include startup, imports, deterministic input generation, solver work, and Numba initialization. Peak RSS is whole-process memory.",
+        "Each row is one explicit hypothesis-family size; point position is the sample mean and horizontal timing whiskers are +/- one sample standard deviation. Warmed Python fits remain inside one benchmark process after input construction. R IHW still includes serialization, the adapter, and an R process launch. Complete-process measurements launch a fresh command and therefore include startup, imports, deterministic input generation, solver work, and any method-specific initialization. Peak RSS is whole-process memory.",
         "",
         "The main scaling figures use exactly 5k, 15k, and 50k hypotheses, shown as explicit axis labels. The one-bin n=500 startup floor remains in the detailed tables but is excluded from the scaling figures.",
         "",
@@ -916,7 +916,7 @@ def _report_lines(
             "The default infinite-lambda path solves the separable Grenander allocation directly. Finite-lambda fits still use the general dense LP, so this optimization does not erase their numerical failures or imply a universal solver claim.",
             "",
             f"- **Measured position:** {performance_headline}",
-            "- **Complete process:** Import, JIT, input construction, and fitting are intentionally combined because that is what a new command experiences.",
+            "- **Complete process:** Import, method initialization, input construction, and fitting are intentionally combined because that is what a new command experiences.",
             "- **Scope contrast:** process divided by warmed-fit time is descriptive, not a pure startup decomposition. A large factor says that fit-only timing cannot explain command latency; it does not assign the difference to one component.",
             "- **Remaining numerical boundary:** the finite-lambda airway failure stays visible and blocks a blanket robustness claim.",
             "",
@@ -1093,7 +1093,7 @@ def _report_lines(
             "Render the report again without rerunning measurements:",
             "",
             "```bash",
-            "uv run --no-project --with numpy --with numba --with matplotlib python -m bench report",
+            "uv run --no-project --with numpy --with matplotlib python -m bench report",
             "```",
             "",
             "</details>",
@@ -1706,9 +1706,9 @@ def _absolute_cost_figure(
         error_field="wall_std_ns",
     )
     process_axis.set_xscale("log")
-    process_axis.set_xlim(0.25, 30)
-    process_axis.set_xticks((0.3, 1, 3, 10, 30))
-    process_axis.set_xticklabels(("0.3 s", "1 s", "3 s", "10 s", "30 s"))
+    process_axis.set_xlim(0.14, 30)
+    process_axis.set_xticks((0.15, 0.3, 1, 3, 10, 30))
+    process_axis.set_xticklabels(("0.15 s", "0.3 s", "1 s", "3 s", "10 s", "30 s"))
     process_axis.set_xlabel("Mean complete-process wall time")
     _absolute_points(
         rss_axis,

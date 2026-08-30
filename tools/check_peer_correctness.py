@@ -45,7 +45,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     passed = passed and auto_row["status"] == "ok"
     output = {
         "recorded_at": datetime.now(UTC).isoformat(timespec="seconds"),
-        "scope": "generated inputs and ihwkit_numpy_numba only",
+        "scope": "generated inputs and ihwkit only",
         "correctness_gate": passed,
         "rows": rows,
     }
@@ -68,19 +68,19 @@ def _production_gate(
     peer_input = load_peer_input(dataset_id)
     config = _config(nfolds, lambda_policy)
     try:
-        result = fit("ihwkit_numpy_numba", peer_input, config)
+        result = fit("ihwkit", peer_input, config)
         _validate_fit(result, peer_input)
     except Exception as exc:  # noqa: BLE001 - a gate records every fit failure
         return {
             "case_id": f"{dataset_id}_{lambda_policy}_n{nfolds}",
-            "method_id": "ihwkit_numpy_numba",
+            "method_id": "ihwkit",
             "dataset_id": dataset_id,
             "status": "error",
             "error": {"type": type(exc).__name__, "message": str(exc)},
         }
     return {
         "case_id": f"{dataset_id}_{lambda_policy}_n{nfolds}",
-        "method_id": "ihwkit_numpy_numba",
+        "method_id": "ihwkit",
         "dataset_id": dataset_id,
         "status": "ok",
         "rejection_count": result.rejection_count,

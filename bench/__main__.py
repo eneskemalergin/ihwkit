@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import importlib.metadata
 import math
 import platform
 import re
@@ -20,8 +21,6 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "src"))
 
-import numba
-
 from ihw import _p_adjust, adjust_ihw
 from tools.peer import (
     REFERENCE_SPECS,
@@ -36,6 +35,13 @@ DEFAULT_ALPHA = 0.1
 DEFAULT_SEED = 2026
 RESULTS_DIR = ROOT / "tmp" / "results"
 _NAME_PATTERN = re.compile(r"[a-z0-9][a-z0-9_-]*")
+
+
+def _package_version(name: str) -> str:
+    try:
+        return importlib.metadata.version(name)
+    except importlib.metadata.PackageNotFoundError:
+        return "not installed"
 
 
 @dataclass(frozen=True)
@@ -664,7 +670,7 @@ def _write_report(
         f"Command: `{command.strip()}`",
         f"Python: {platform.python_version()}",
         f"NumPy: {np.__version__}",
-        f"Numba: {numba.__version__}",
+        f"Numba: {_package_version('numba')}",
         f"Imported implementation: `{Path(adjust_ihw.__code__.co_filename).resolve()}`",
         f"Nominal alpha: {alpha}",
         f"Study scale: {'quick smoke' if quick else 'development study'}",

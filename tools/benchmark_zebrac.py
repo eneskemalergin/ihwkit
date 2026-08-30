@@ -18,7 +18,7 @@ sys.path.insert(0, str(ROOT))
 from tools.peer import METHODS, REFERENCE_IDS, PeerDataError, PeerInput, load_peer_input
 
 PEER_SCRIPT = ROOT / "tools" / "peer.py"
-DEFAULT_METHODS = ("ihwkit_numpy_numba",)
+DEFAULT_METHODS = ("ihwkit",)
 METRIC_FIELDS = (
     "wall_time",
     "peak_rss",
@@ -54,7 +54,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         preflight_documents[method_id] = document
         if document.get("status") == "ok":
             available_methods.append(method_id)
-    if "ihwkit_numpy_numba" not in available_methods:
+    if "ihwkit" not in available_methods:
         _write_metadata(
             result_dir / f"{args.name}.metadata.json",
             args,
