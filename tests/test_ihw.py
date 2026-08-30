@@ -1,4 +1,3 @@
-import builtins
 import inspect
 from math import erf, sqrt
 
@@ -9,7 +8,6 @@ from ihw import (
     IHWValidationError,
     _isotonic_blocks,
     _p_adjust,
-    _solve_lp_numpy,
     _thresholds_to_weights,
     _unregularized_weights,
     adjust_ihw,
@@ -78,18 +76,6 @@ def test_nfolds_not_positive_raises() -> None:
     with pytest.raises(ValueError, match="nfolds"):
         adjust_ihw(_P, _X, 0.1, nfolds=-3)
 
-def test_nfolds_internal_not_positive_raises() -> None:
-    with pytest.raises(ValueError, match="nfolds_internal"):
-        adjust_ihw(_P, _X, 0.1, nfolds_internal=0)
-    with pytest.raises(ValueError, match="nfolds_internal"):
-        adjust_ihw(_P, _X, 0.1, nfolds_internal=-1)
-
-def test_nsplits_internal_not_positive_raises() -> None:
-    with pytest.raises(ValueError, match="nsplits_internal"):
-        adjust_ihw(_P, _X, 0.1, nsplits_internal=0)
-    with pytest.raises(ValueError, match="nsplits_internal"):
-        adjust_ihw(_P, _X, 0.1, nsplits_internal=-2)
-
 def test_nbins_not_positive_raises() -> None:
     with pytest.raises(ValueError, match="nbins"):
         adjust_ihw(_P, _X, 0.1, nbins=0)
@@ -142,22 +128,44 @@ def test_negative_fold_labels_raise() -> None:
     with pytest.raises(ValueError, match="folds labels"):
         adjust_ihw(p, x, 0.1, nbins=4, nfolds=5, folds=folds, seed=1)
 
-def test_empty_lambdas_raise() -> None:
-    with pytest.raises(ValueError, match="lambdas"):
-        adjust_ihw(_P, _X, 0.1, nbins=2, lambdas=[])
+def test_fractional_fold_labels_raise_instead_of_being_truncated() -> None:
+    folds = np.array([0.0, 1.0, 2.5, 3.0] * 20)
+    with pytest.raises(ValueError, match="integer values"):
+        adjust_ihw(np.linspace(0.01, 0.8, 80), np.arange(80), 0.1, nbins=4, folds=folds)
 
-def test_nan_lambda_raises() -> None:
-    with pytest.raises(ValueError, match="lambdas"):
-        adjust_ihw(_P, _X, 0.1, nbins=2, lambdas=[np.nan])
+def test_single_bin_still_validates_supplied_folds() -> None:
+    folds = np.array([0.0, 1.5, 0.0, 1.0])
+    with pytest.raises(ValueError, match="integer values"):
+        adjust_ihw(_P, _X, 0.1, nbins=1, folds=folds)
 
-def test_negative_lambda_raises() -> None:
-    with pytest.raises(ValueError, match="lambdas"):
-        adjust_ihw(_P, _X, 0.1, nbins=2, lambdas=[-1.0])
+def test_fractional_group_labels_raise_instead_of_being_truncated() -> None:
+    groups = np.array([0.0, 1.0, 2.5, 3.0] * 20)
+    with pytest.raises(ValueError, match="integer values"):
+        adjust_ihw(np.linspace(0.01, 0.8, 80), np.arange(80), 0.1, groups=groups)
 
-def test_public_api_has_no_backend_switches() -> None:
+def test_integer_options_do_not_silently_truncate_floats() -> None:
+    with pytest.raises(ValueError, match="positive integer"):
+        adjust_ihw(_P, _X, 0.1, nbins=2.5)
+    with pytest.raises(ValueError, match="positive integer"):
+        adjust_ihw(_P, _X, 0.1, nfolds=2.5)
+
+def test_public_api_is_the_documented_small_interface() -> None:
     parameters = inspect.signature(adjust_ihw).parameters
-    assert "lp_backend" not in parameters
-    assert "use_numba" not in parameters
+    assert set(parameters) == {
+        "pvalues",
+        "covariates",
+        "alpha",
+        "exploratory",
+        "covariate_type",
+        "nbins",
+        "nfolds",
+        "adjustment_type",
+        "folds",
+        "groups",
+        "m_groups",
+        "rng",
+        "seed",
+    }
 
 def test_default_low_memory_path_runs() -> None:
     rng = np.random.default_rng(0)
@@ -167,27 +175,6 @@ def test_default_low_memory_path_runs() -> None:
     assert np.all(np.isfinite(result.weights))
     assert np.all(np.isfinite(result.adj_pvalues))
     np.testing.assert_allclose(np.mean(result.weights), 1.0, atol=1e-8)
-
-def test_default_path_does_not_import_numba(monkeypatch: pytest.MonkeyPatch) -> None:
-    original_import = builtins.__import__
-
-    def guarded_import(name: str, *args: object, **kwargs: object) -> object:
-        if name == "numba" or name.startswith("numba."):
-            raise AssertionError("the default path imported optional Numba")
-        return original_import(name, *args, **kwargs)
-
-    monkeypatch.setattr(builtins, "__import__", guarded_import)
-    rng = np.random.default_rng(19)
-    result = adjust_ihw(
-        rng.uniform(size=300),
-        rng.uniform(size=300),
-        0.1,
-        nbins=5,
-        nfolds=5,
-        seed=19,
-    )
-
-    assert np.all(np.isfinite(result.weights))
 
 def test_isotonic_blocks_pool_weighted_violations() -> None:
     values, weights, counts = _isotonic_blocks(
@@ -253,7 +240,7 @@ def test_nominal_covariates_run() -> None:
     x = rng.integers(0, 5, size=80).astype(float)
     result = adjust_ihw(p, x, 0.1, nbins=4, covariate_type="nominal", seed=1)
     assert np.all(np.isfinite(result.weights))
-    assert result.penalty == "uniform_deviation"
+    assert result.covariate_type == "nominal"
 
 def test_nominal_uses_unique_levels() -> None:
     rng = np.random.default_rng(0)
@@ -263,7 +250,7 @@ def test_nominal_uses_unique_levels() -> None:
     counts = np.bincount(result.groups)
     np.testing.assert_array_equal(np.sort(counts), [2, 2, 8, 68])
     assert result.nbins == 4
-    assert result.penalty == "uniform_deviation"
+    assert result.covariate_type == "nominal"
 
 def test_single_nominal_level_is_bh() -> None:
     rng = np.random.default_rng(0)
@@ -284,14 +271,6 @@ def test_nfolds_follows_supplied_fold_labels() -> None:
     assert result.nfolds == 3
     assert set(result.folds.tolist()) == {0, 1, 2}
 
-def test_default_path_records_inf_fold_lambdas() -> None:
-    rng = np.random.default_rng(0)
-    p = rng.uniform(size=80)
-    x = rng.uniform(size=80)
-    result = adjust_ihw(p, x, 0.1, nbins=4, seed=1)
-    assert result.fold_lambdas.shape == (5,)
-    np.testing.assert_array_equal(result.fold_lambdas, np.inf)
-
 def test_result_metadata_on_a_default_fit() -> None:
     rng = np.random.default_rng(0)
     p = rng.uniform(size=80)
@@ -300,9 +279,8 @@ def test_result_metadata_on_a_default_fit() -> None:
     assert result.alpha == 0.1
     assert result.nbins == 4
     assert result.nfolds == 5
-    assert result.penalty == "total_variation"
-    assert result.fold_lambdas.shape == (5,)
-    np.testing.assert_array_equal(result.fold_lambdas, np.inf)
+    assert result.covariate_type == "ordinal"
+    assert result.adjustment_type == "bh"
 
 def test_result_includes_bin_counts() -> None:
     rng = np.random.default_rng(0)
@@ -349,58 +327,12 @@ def test_weighted_pvalues_stay_in_unit_interval() -> None:
     assert np.all(result.weighted_pvalues >= 0.0)
     assert np.all(result.weighted_pvalues <= 1.0)
 
-def test_lambda_zero_gives_unit_weights() -> None:
-    rng = np.random.default_rng(0)
-    p = rng.uniform(size=80)
-    x = rng.uniform(size=80)
-    result = adjust_ihw(p, x, 0.1, nbins=4, lambdas=[0.0], seed=1)
-    np.testing.assert_allclose(result.weights, 1.0)
-    np.testing.assert_allclose(result.adj_pvalues, _p_adjust(p, "fdr_bh"))
-
-def test_auto_lambda_is_finite_and_may_differ_from_inf() -> None:
-    rng = np.random.default_rng(0)
-    p = rng.uniform(size=500)
-    x = rng.uniform(size=500)
-    inf = adjust_ihw(p, x, 0.1, nbins=4, seed=1)
-    auto = adjust_ihw(p, x, 0.1, nbins=4, lambdas="auto", seed=1)
-    assert np.all(np.isfinite(auto.weights))
-    assert np.all(np.isfinite(auto.adj_pvalues))
-    weights_differ = not np.allclose(auto.weights, inf.weights)
-    adj_differ = not np.allclose(auto.adj_pvalues, inf.adj_pvalues)
-    assert weights_differ or adj_differ
-
-def test_auto_lambda_picks_from_the_grid() -> None:
-    rng = np.random.default_rng(0)
-    p = rng.uniform(size=80)
-    x = rng.uniform(size=80)
-    result = adjust_ihw(p, x, 0.1, nbins=4, lambdas="auto", seed=1)
-    allowed = {0.0, 0.5, 1.0, 2.0, 4.0, np.inf}
-    for lam in result.fold_lambdas:
-        assert float(lam) in allowed
-
-def test_auto_lambda_with_two_inner_splits() -> None:
-    rng = np.random.default_rng(0)
-    p = rng.uniform(size=400)
-    x = rng.uniform(size=400)
-    result = adjust_ihw(p, x, 0.1, nbins=4, lambdas="auto", nsplits_internal=2, seed=1)
-    assert np.all(np.isfinite(result.weights))
-    assert np.all(np.isfinite(result.adj_pvalues))
-
-def test_exploratory_ignores_the_auto_lambda_grid() -> None:
-    rng = np.random.default_rng(0)
-    p = rng.uniform(size=80)
-    x = rng.uniform(size=80)
-    result = adjust_ihw(p, x, 0.1, nbins=4, exploratory=True, lambdas="auto", seed=1)
-    assert result.nfolds == 1
-    np.testing.assert_array_equal(result.fold_lambdas, [np.inf])
-
-def test_preset_bins_lambdas_and_m_groups_run() -> None:
+def test_preset_groups_and_m_groups_run() -> None:
     rng = np.random.default_rng(0)
     p = rng.uniform(size=80)
     x = rng.uniform(size=80)
     g = np.array([0, 1, 2, 3] * 20)
     mg = np.bincount(g, minlength=4) + 10
-    fl = np.full(5, np.inf)
     result = adjust_ihw(
         p,
         x,
@@ -408,12 +340,10 @@ def test_preset_bins_lambdas_and_m_groups_run() -> None:
         nbins=4,
         groups=g,
         m_groups=mg,
-        fold_lambdas=fl,
         seed=1,
     )
     np.testing.assert_array_equal(result.groups, g)
     np.testing.assert_array_equal(result.m_groups, mg)
-    np.testing.assert_array_equal(result.fold_lambdas, fl)
     assert np.all(np.isfinite(result.weights))
     assert np.all(np.isfinite(result.adj_pvalues))
 
@@ -426,45 +356,6 @@ def test_preset_groups_skip_binning() -> None:
     np.testing.assert_array_equal(result.groups, g)
     binned = adjust_ihw(p, x, 0.1, nbins=4, seed=1)
     assert not np.array_equal(binned.groups, g)
-
-def test_preset_fold_lambdas_skip_inner_cv(monkeypatch: pytest.MonkeyPatch) -> None:
-    import ihw as ihw_mod
-
-    def boom(*args, **kwargs):
-        raise AssertionError("inner cv should not run")
-
-    monkeypatch.setattr(ihw_mod, "_select_lambda", boom)
-    rng = np.random.default_rng(0)
-    p = rng.uniform(size=80)
-    x = rng.uniform(size=80)
-    fl = np.array([0.0, 0.5, 1.0, 2.0, np.inf])
-    result = adjust_ihw(p, x, 0.1, nbins=4, fold_lambdas=fl, lambdas="auto", seed=1)
-    np.testing.assert_array_equal(result.fold_lambdas, fl)
-
-def test_inner_folds_redrawn_per_lambda(monkeypatch: pytest.MonkeyPatch) -> None:
-    import ihw as ihw_mod
-
-    calls: list[int] = []
-    orig = ihw_mod._assign_folds
-
-    def counted(n: int, nfolds: int, rng: np.random.Generator) -> np.ndarray:
-        calls.append(nfolds)
-        return orig(n, nfolds, rng)
-
-    monkeypatch.setattr(ihw_mod, "_assign_folds", counted)
-    rng = np.random.default_rng(0)
-    p = rng.uniform(size=80)
-    x = rng.uniform(size=80)
-    folds = np.zeros(80, dtype=np.intp)
-    short = [0.0, np.inf]
-    adjust_ihw(p, x, 0.1, nbins=4, folds=folds, lambdas=short, seed=1)
-    n_short = len(calls)
-    calls.clear()
-    long = [0.0, 1.0, np.inf]
-    adjust_ihw(p, x, 0.1, nbins=4, folds=folds, lambdas=long, seed=1)
-    n_long = len(calls)
-    assert n_short == len(short)
-    assert n_long == len(long)
 
 def test_m_groups_with_a_subset_of_pvalues() -> None:
     rng = np.random.default_rng(0)
@@ -486,6 +377,28 @@ def test_m_groups_with_a_subset_of_pvalues() -> None:
     assert np.all(np.isfinite(result.adj_pvalues))
     np.testing.assert_array_equal(result.m_groups, mg)
 
+def test_m_groups_cannot_understate_the_observed_family() -> None:
+    groups = np.array([0, 1, 2, 3] * 20)
+    with pytest.raises(ValueError, match="smaller than the observed"):
+        adjust_ihw(
+            np.linspace(0.01, 0.8, 80),
+            np.arange(80),
+            0.1,
+            groups=groups,
+            m_groups=np.array([20, 20, 19, 20]),
+        )
+
+def test_fractional_m_groups_raise_instead_of_being_truncated() -> None:
+    groups = np.array([0, 1, 2, 3] * 20)
+    with pytest.raises(ValueError, match="integer values"):
+        adjust_ihw(
+            np.linspace(0.01, 0.8, 80),
+            np.arange(80),
+            0.1,
+            groups=groups,
+            m_groups=np.array([20.0, 20.0, 20.5, 20.0]),
+        )
+
 def test_frozen_partition_is_deterministic() -> None:
     rng = np.random.default_rng(0)
     p = rng.uniform(size=80)
@@ -497,87 +410,17 @@ def test_frozen_partition_is_deterministic() -> None:
     np.testing.assert_allclose(a.weights, b.weights)
     np.testing.assert_array_equal(a.groups, g)
 
-def test_single_fold_inf_lambda_with_preset_groups() -> None:
+def test_single_fold_with_preset_groups() -> None:
     rng = np.random.default_rng(0)
     p = rng.uniform(size=80)
     x = rng.uniform(size=80)
     g = np.array([0, 1, 2, 3] * 20)
     result = adjust_ihw(p, x, 0.1, nbins=4, nfolds=1, groups=g, seed=1)
     assert result.nfolds == 1
-    np.testing.assert_array_equal(result.fold_lambdas, [np.inf])
-
-def test_production_lp_solves_textbook() -> None:
-    c = np.array([3.0, 4.0])
-    a = np.array([[1.0, 2.0], [3.0, 1.0]])
-    b = np.array([8.0, 9.0])
-    lb = np.zeros(2)
-    ub = np.full(2, np.inf)
-    solution = _solve_lp_numpy(c, a, b, lb, ub)
-    np.testing.assert_allclose(solution, np.array([2.0, 3.0]), atol=1e-8)
-    np.testing.assert_allclose(c @ solution, 18.0, atol=1e-8)
-
-def test_production_lp_respects_box_bounds() -> None:
-    c = np.array([1.0, 1.0])
-    a = np.zeros((0, 2))
-    b = np.zeros(0)
-    lb = np.zeros(2)
-    ub = np.array([1.0, 2.0])
-    solution = _solve_lp_numpy(c, a, b, lb, ub)
-    np.testing.assert_allclose(solution, np.array([1.0, 2.0]), atol=1e-8)
-
-def test_production_lp_respects_random_box_lps() -> None:
-    rng = np.random.default_rng(1)
-    for _ in range(12):
-        n = 8
-        m = 12
-        a = rng.normal(size=(m, n))
-        x_true = rng.uniform(0.0, 2.0, size=n)
-        b = a @ x_true + rng.uniform(0.1, 1.0, size=m)
-        c = rng.normal(size=n)
-        lb = np.zeros(n)
-        ub = np.full(n, 2.0)
-        solution = _solve_lp_numpy(c, a, b, lb, ub)
-        assert c @ solution >= c @ x_true - 1e-7
-        assert np.max(a @ solution - b) < 1e-7
-        assert np.all(solution >= -1e-8)
-        assert np.all(solution <= 2.0 + 1e-8)
-
-def test_production_lp_handles_column_scale() -> None:
-    c = np.array([1.0, 1e6])
-    a = np.array([[1.0, 1e6], [1e-6, 1.0]])
-    b = np.array([2.0, 2.0])
-    lb = np.zeros(2)
-    ub = np.full(2, np.inf)
-    solution = _solve_lp_numpy(c, a, b, lb, ub)
-    assert np.all(np.isfinite(solution))
-    assert np.max(a @ solution - b) < 1e-6
-    np.testing.assert_allclose(c @ solution, 2.0, atol=1e-6, rtol=1e-6)
-
-def test_numpy_lp_infeasible_raises() -> None:
-    c = np.array([1.0])
-    a = np.array([[1.0], [-1.0]])
-    b = np.array([-1.0, -1.0])
-    lb = np.zeros(1)
-    ub = np.array([10.0])
-    with pytest.raises(RuntimeError, match="did not solve"):
-        _solve_lp_numpy(c, a, b, lb, ub)
 
 def test_zero_weight_denom_raises() -> None:
     with pytest.raises(RuntimeError, match="weight denom"):
         _thresholds_to_weights(np.array([0.1, 0.2, 0.0]), np.array([0, 0, 10]))
-
-def test_finite_penalty_lp_failure_raises(monkeypatch: pytest.MonkeyPatch) -> None:
-    import ihw as ihw_mod
-
-    def fail(*args: object, **kwargs: object) -> np.ndarray:
-        raise RuntimeError("weight LP did not solve: stub infeasibility")
-
-    monkeypatch.setattr(ihw_mod, "_solve_lp_numpy", fail)
-    rng = np.random.default_rng(0)
-    p = rng.uniform(size=40)
-    x = rng.uniform(size=40)
-    with pytest.raises(RuntimeError, match="weight LP did not solve"):
-        adjust_ihw(p, x, 0.1, nbins=4, lambdas=np.array([1.0]), seed=1)
 
 def test_successful_weight_fit_does_not_fall_back_to_uniform() -> None:
     rng = np.random.default_rng(7)
@@ -678,7 +521,7 @@ def test_constant_pvalues() -> None:
     assert np.all(np.isfinite(result.weights))
     assert np.all(np.isfinite(result.adj_pvalues))
 
-def test_uniform_null_fdr_is_conservative() -> None:
+def test_uniform_null_rejection_fraction_is_small() -> None:
     alpha = 0.1
     n = 2000
     rates = []
@@ -690,7 +533,7 @@ def test_uniform_null_fdr_is_conservative() -> None:
         rates.append(float(np.mean(result.adj_pvalues <= alpha)))
     assert max(rates) < alpha
 
-def test_nominal_null_fdr_is_conservative() -> None:
+def test_nominal_null_rejection_fraction_is_small() -> None:
     alpha = 0.1
     n = 2000
     labels = np.array([0.0] * 200 + [1.0] * 300 + [2.0] * 500 + [3.0] * 1000)

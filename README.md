@@ -1,21 +1,23 @@
 # ihwkit
 
-Independent Hypothesis Weighting for covariate-weighted multiple testing.
+`ihwkit` is a small NumPy implementation of Independent Hypothesis Weighting for covariate-weighted multiple testing.
 
-## Runtime
+Version 0.1 deliberately offers one production method:
 
-The installable library has one implementation in `src/ihw.py`. Its default infinite-lambda fit uses a NumPy-only direct Grenander allocation and does not import Numba. Explicit finite-lambda fits retain the dense simplex solver and lazily require the optional Numba extra. SciPy is not an installable dependency and is not a hidden fallback.
+- five-fold cross-weighting by default;
+- the unregularized allocation, also called infinite lambda in the IHW literature;
+- Benjamini-Hochberg or Bonferroni adjustment;
+- ordinal covariates with automatic equal-frequency grouping;
+- a NumPy-only runtime with no solver, JIT, or backend choice.
 
-The supported base runtime is Python 3.12 or newer with NumPy. Install the default method from the repository root in an active environment:
+Finite regularization is not a hidden optional path in 0.1. It remains future work requiring explicit statistical and numerical acceptance criteria.
+
+## Install and use
+
+The supported runtime is Python 3.12 or newer with NumPy:
 
 ```bash
 python -m pip install -e .
-```
-
-Install finite-lambda support only when it is needed:
-
-```bash
-python -m pip install -e '.[finite]'
 ```
 
 The public entry point is `adjust_ihw`:
@@ -26,105 +28,80 @@ import numpy as np
 from ihw import adjust_ihw
 
 rng = np.random.default_rng(0)
-pvalues = rng.uniform(size=5000)
-covariates = rng.uniform(size=5000)
+pvalues = rng.uniform(size=5_000)
+covariates = rng.uniform(size=5_000)
 
 result = adjust_ihw(pvalues, covariates, alpha=0.1, seed=1)
 result.adj_pvalues
 result.weights
 ```
 
-The default fit uses five outer folds and infinite lambda, so no inner lambda search runs. `exploratory=True` uses one fold for weight inspection and is not a testing guarantee. `lambdas="auto"` enables the built-in lambda grid and nested cross-validation.
+The result also contains weighted p-values, group and fold assignments, the requested alpha, effective bin and fold counts, covariate and adjustment types, and full-family group counts.
 
-`nbins="auto"` selects `max(1, min(40, n // 1500))`. Set `nbins` explicitly when a small fixture needs more than one group. Invalid input, partition, and option values raise `IHWValidationError`. A failed or nonfinite weight optimization raises `RuntimeError`.
+`nbins="auto"` selects `max(1, min(40, n // 1500))`. Set it explicitly for a small example that needs more than one group. `exploratory=True` learns and applies weights on one fold for inspection; it is not the confirmatory default. Frozen `groups` and `folds` support direct replay, while `m_groups` supports a filtered subset whose full family counts are known.
 
-The public function has no solver or JIT switches. `lp_backend` and `use_numba` are not accepted parameters.
+Nominal covariates and Bonferroni adjustment are implemented and covered by structural tests. The current parity and full simulation evidence is much broader for ordinal covariates with BH, so the benchmark report does not imply equal validation for every accepted option.
 
-## Peer comparisons
+## Statistical boundary
 
-`tools/peer.py` is the single local interface for comparison methods. Ordinary synthetic inputs are generated from readable names, sizes, and seeds. `bench/data/` contains one self-contained R reference file per retained data shape: the synthetic `n=5000` shape and the existing local airway p-value/base-mean shape. Each file stores the input once and the partitions and R outputs for one-fold infinity, five-fold infinity, and five-fold automatic lambda.
+IHW needs a covariate that is informative about power while satisfying the required null-independence conditions. A data-derived covariate is not suitable merely because it predicts small p-values. Cross-weighting keeps each hypothesis out of the data used to learn its weight, but it does not repair an invalid covariate, arbitrary dependence, or invalid upstream p-values.
 
-The supported comparison methods are tool-owned and are not part of the installable API:
+The learned weights depend on the requested `alpha`. Consequently, `adj_pvalues` answer the decision problem for that fitted alpha; one fit should not be presented as an alpha-free q-value curve.
 
-- **`ihwkit`:** the production low-memory NumPy default, with the lazy optional finite-lambda solver.
-- **`ihwkit_numpy`:** the NumPy-only reference, with the same direct default allocation and a retained dense finite-lambda simplex.
-- **`ihwkit_scipy`:** a pinned pre-transition SciPy HiGHS baseline.
-- **`pyihw`:** the reviewed public `pyihw` 0.2.0 API, using its `rng` and lambda conventions explicitly.
-- **`r_ihw`:** native R IHW, with the installed IHW version read from the completed run.
+The current simulation study covers named independent-null and mixture scenarios. It does not prove universal FDR control, and it does not yet cover arbitrary dependence, discrete p-values, or every filtered-family design. The limits and failed or unavailable fits remain visible in [`bench/REPORT.md`](bench/REPORT.md).
 
-Run one method directly with:
+## Benchmark and peer comparisons
 
-```bash
-python tools/peer.py --method ihwkit --dataset sim_5000_seed42
-```
+`python -m bench` keeps correctness, fixed R parity, statistical validity, robustness, speed, and process memory as separate questions. There is no combined winner score.
 
-Run the generated production correctness gate with:
+The comparison methods are tool-owned, not alternate public backends:
 
-```bash
-python tools/check_peer_correctness.py
-```
+- **`ihwkit`:** the production NumPy method;
+- **`ihwkit_scipy`:** the retained dense SciPy/HiGHS implementation;
+- **`pyihw`:** the reviewed public PyIHW 0.2.0 interface;
+- **`r_ihw`:** Bioconductor IHW, used to create the fixed R references.
 
-Synthetic lambda-infinity replay uses the fixed R reference cases. Rejection counts, adjusted p-values, weights, and error status are separate checks. A close rejection count alone is not a parity claim.
+The old NumPy peer was removed because production is now the optimized NumPy implementation; timing both labels compared the method with a slower copy of itself.
 
-There is no root `data/` tree, manifest, checksum, detached metadata file, or benchmark download step. [`bench/data/README.md`](bench/data/README.md) records the human-readable provenance and the known limitation of the existing airway export. Airway remains diagnostic and never blocks a synthetic release gate.
-
-## Benchmarks
-
-The local `bench` entry point keeps correctness, parity, statistical validity, robustness, and performance as separate questions. The full study runs those tracks in a visible order and reports them separately; it never reduces them to a combined score.
-
-Show the current evidence matrix with:
+Useful commands are:
 
 ```bash
 python -m bench matrix
-```
-
-Run the cheap tracks directly:
-
-```bash
 python -m bench correctness
 python -m bench parity
 python -m bench robustness
 python -m bench validity --quick
+python tools/peer.py --method ihwkit --dataset sim_5000_seed42
 ```
 
-`python -m bench references` lists the immutable R records without running R. An explicit `--refresh DATASET` reruns R IHW against the arrays already stored for that dataset; routine benchmarks never refresh references.
+`bench/data/` contains the synthetic and existing local airway arrays needed for fixed R comparison. Routine benchmarks never download data or rerun R. `python -m bench references` lists the records, and the explicit `--refresh DATASET` form recomputes R results from the arrays already present. There is intentionally no manifest, checksum, or detached identity machinery; [`bench/data/README.md`](bench/data/README.md) records the readable ownership and limitations.
 
-The robustness command currently returns nonzero because the finite-lambda airway replay still reports LP infeasibility. The direct default path now passes both airway infinite-lambda replays and the generated `mixture_mild`, `n=3000`, seed-2034 case. The command still writes the complete report, including the independently passing weighted-BH checks; failures never become uniform-weight fallbacks.
-
-The current comparative report is [`bench/REPORT.md`](bench/REPORT.md). Its light/dark summary figures use horizontal FDR and power intervals, tolerance-scaled fixed-reference parity, an absolute cost matrix, and a peer-to-ihwkit ratio matrix. Numerical robustness and collapsible detailed tables remain beside the visual summaries. Missing, failed, and unavailable methods remain visible.
-
-The validity runner writes a row for every attempted fit plus a compact summary under ignored `tmp/results/`. Global-null FDR is measured as the probability of any rejection, not as the fraction of hypotheses rejected. The quick run is a wiring smoke test, not calibration evidence.
-
-For process-level performance, install [`zebrac`](https://github.com/eneskemalergin/zebrac) and make the executable available on `PATH`. The runner records the resolved executable path, reported version, date, command, and runtime details for each local result.
-
-Run a small process-level comparison with:
+For process measurements, install [`zebrac`](https://github.com/eneskemalergin/zebrac) and run:
 
 ```bash
 python -m bench performance --dataset sim_5000_seed42 --duration 5000 --warmup 3 --min-samples 10 --max-samples 10
 ```
 
-The default measures only `ihwkit`, because that is the implementation expected to change. Request comparisons explicitly with `--methods`, for example `--methods ihwkit r_ihw`. Raw zebrac JSON and readable comparison metadata are written under ignored `tmp/results/`. The measurement includes process startup, input generation or loading, and all initialization performed by a method. The full study reports these complete-process measurements separately from repeated fit calls after warmup.
-
-Run the full benchmark and regenerate the report with the optional peer and plotting environment:
+The full optional comparison environment is:
 
 ```bash
-uv run --no-project --with pytest --with numpy --with numba --with scipy --with pyihw==0.2.0 --with matplotlib python -m bench study
+uv run --no-project --with pytest --with numpy --with scipy --with pyihw==0.2.0 --with matplotlib python -m bench study
 ```
 
-`bench/peer-performance.json` retains the dated machine-local measurements for comparison methods that normally do not change. The default full study remeasures production and reuses that readable table. Use `--refresh-peers` deliberately when peer code, versions, the machine, or the measurement protocol changes. Fixed R parity outputs remain in `bench/data/` and are never regenerated by the study command.
+Peer timing is retained in `bench/peer-performance.json` because unchanged external methods do not need to be remeasured on every production edit. Use `--refresh-peers` when a peer, runtime, machine, or protocol actually changes.
 
 ## Development
 
-Run package-only tests with a temporary pytest runner when pytest is not installed in the minimal runtime environment:
+Run the package tests with:
 
 ```bash
-uv run --no-project --with pytest --with numpy --with numba pytest -q tests
+uv run --no-project --with pytest --with numpy pytest -q tests
 ```
 
-Run the repository-wide gate, including generated inputs, frozen R replay, and peer checks, with:
+Run the complete repository gate with:
 
 ```bash
-uv run --no-project --with pytest --with numpy --with numba pytest -q
+uv run --no-project --with pytest --with numpy --with scipy pytest -q
 ```
 
-`tests/` contains tests for the installable `ihw` package only. The repository-wide test command also collects the consolidated tool and benchmark checks under `tools/tests/`. `bench/` is the single human-facing evidence entry point and owns retained benchmark data. `tools/` contains focused implementations, simulations, and the peer interface. The installable module remains `src/ihw.py`.
+The installable implementation remains one file, `src/ihw.py`. Package tests live in `tests/`; peer and benchmark checks live in `tools/tests/`; public benchmark evidence lives in `bench/`.
