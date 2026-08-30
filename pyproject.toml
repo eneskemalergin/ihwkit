@@ -10,9 +10,20 @@ readme = "README.md"
 requires-python = ">=3.12"
 license = "MIT"
 authors = [{ name = "Enes Kemal Ergin" }]
+keywords = [
+    "false discovery rate",
+    "independent hypothesis weighting",
+    "multiple testing",
+    "statistics",
+]
 dependencies = [
     "numpy",
 ]
+
+[project.urls]
+Source = "https://github.com/eneskemalergin/ihwkit"
+Issues = "https://github.com/eneskemalergin/ihwkit/issues"
+Benchmarks = "https://github.com/eneskemalergin/ihwkit/blob/main/bench/REPORT.md"
 
 [tool.hatch.build.targets.wheel.force-include]
 "src/ihw.py" = "ihw.py"
