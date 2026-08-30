@@ -37,7 +37,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     args = _argument_parser().parse_args(argv)
     if args.name is None:
-        args.name = f"zebrac_{args.dataset}_{args.lambda_policy}"
+        args.name = f"zebrac_{args.dataset}"
     result_dir = (ROOT / args.result_dir).resolve()
     _ensure_result_dir(result_dir)
     try:
@@ -142,8 +142,6 @@ def _run_preflight(
         str(args.alpha),
         "--nbins",
         str(args.nbins),
-        "--lambda-policy",
-        args.lambda_policy,
         "--seed",
         str(args.seed),
         "--result",
@@ -193,8 +191,6 @@ def _peer_command(method_id: str, args: argparse.Namespace) -> str:
         str(args.alpha),
         "--nbins",
         str(args.nbins),
-        "--lambda-policy",
-        args.lambda_policy,
         "--seed",
         str(args.seed),
         "--quiet",
@@ -277,7 +273,6 @@ def _write_metadata(
             "alpha": args.alpha,
             "nbins": args.nbins,
             "nfolds": args.nfolds,
-            "lambda_policy": args.lambda_policy,
             "adjustment_type": args.adjustment_type,
             "seed": args.seed,
             "reference_id": args.reference,
@@ -307,7 +302,6 @@ def _argument_parser() -> argparse.ArgumentParser:
     parser.add_argument("--alpha", type=float, default=0.1)
     parser.add_argument("--nbins", default="auto")
     parser.add_argument("--nfolds", type=int)
-    parser.add_argument("--lambda-policy", choices=("inf", "auto"), default="inf")
     parser.add_argument("--adjustment-type", choices=("bh", "bonferroni"), default="bh")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--duration", type=int, default=5000)

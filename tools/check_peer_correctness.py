@@ -19,7 +19,7 @@ from tools.peer import FitResult, PeerInput, RunConfig, fit, load_peer_input
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Run finite-output checks on generated inputs and production only."""
+    """Run numerical output checks on generated inputs and production only."""
 
     args = _argument_parser().parse_args(argv)
     result_dir = (ROOT / args.result_dir).resolve()
@@ -39,10 +39,6 @@ def main(argv: Sequence[str] | None = None) -> int:
         row = _production_gate(dataset_id, nfolds)
         rows.append(row)
         passed = passed and row["status"] == "ok"
-    auto_row = _production_gate("sim_5000_seed42", 5, lambda_policy="auto")
-    auto_row["case_id"] = "sim_5000_auto_native"
-    rows.append(auto_row)
-    passed = passed and auto_row["status"] == "ok"
     output = {
         "recorded_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "scope": "generated inputs and ihwkit only",
@@ -60,26 +56,24 @@ def main(argv: Sequence[str] | None = None) -> int:
     return 0 if passed else 1
 
 
-def _production_gate(
-    dataset_id: str, nfolds: int, lambda_policy: str = "inf"
-) -> dict[str, object]:
+def _production_gate(dataset_id: str, nfolds: int) -> dict[str, object]:
     """Check finite production output for one synthetic case."""
 
     peer_input = load_peer_input(dataset_id)
-    config = _config(nfolds, lambda_policy)
+    config = _config(nfolds)
     try:
         result = fit("ihwkit", peer_input, config)
         _validate_fit(result, peer_input)
     except Exception as exc:  # noqa: BLE001 - a gate records every fit failure
         return {
-            "case_id": f"{dataset_id}_{lambda_policy}_n{nfolds}",
+            "case_id": f"{dataset_id}_n{nfolds}",
             "method_id": "ihwkit",
             "dataset_id": dataset_id,
             "status": "error",
             "error": {"type": type(exc).__name__, "message": str(exc)},
         }
     return {
-        "case_id": f"{dataset_id}_{lambda_policy}_n{nfolds}",
+        "case_id": f"{dataset_id}_n{nfolds}",
         "method_id": "ihwkit",
         "dataset_id": dataset_id,
         "status": "ok",
@@ -88,12 +82,11 @@ def _production_gate(
     }
 
 
-def _config(nfolds: int, lambda_policy: str) -> RunConfig:
+def _config(nfolds: int) -> RunConfig:
     return RunConfig(
         alpha=0.1,
         nbins="auto",
         nfolds=nfolds,
-        lambda_policy="auto" if lambda_policy == "auto" else "inf",
         adjustment_type="bh",
         seed=42,
     )

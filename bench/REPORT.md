@@ -2,20 +2,19 @@
 
 # ihwkit benchmark report
 
-Recorded: 2026-08-30T02:56:29+00:00
+Recorded: 2026-08-30T03:57:21+00:00
 
 This is the current measurement baseline for correctness, R parity, statistical behavior, numerical robustness, speed, and process memory. It is a presentation of evidence, not a combined winner score. Failed and unavailable fits remain visible.
 
 ## Method labels used throughout
 
-| label               | implementation                                                            | role in this report                                    |
-| ------------------- | ------------------------------------------------------------------------- | ------------------------------------------------------ |
-| **ihwkit**          | installable low-memory NumPy default; optional finite-lambda Numba solver | subject under evaluation                               |
-| **NumPy reference** | NumPy-only direct default plus dense finite-lambda simplex                | correctness and scaling reference, not installable API |
-| **SciPy/HiGHS**     | retained implementation using SciPy's HiGHS solver                        | numerical and performance reference; never a fallback  |
-| **pyihw**           | public pyihw 0.2.0 package                                                | external Python comparison                             |
-| **R IHW**           | Bioconductor IHW 1.40.0                                                   | fixed parity authority and external timing comparison  |
-| **BH**              | unweighted Benjamini-Hochberg                                             | statistical baseline only                              |
+| label           | implementation                                                   | role in this report                                   |
+| --------------- | ---------------------------------------------------------------- | ----------------------------------------------------- |
+| **ihwkit**      | installable low-memory NumPy method; five-fold unregularized IHW | subject under evaluation                              |
+| **SciPy/HiGHS** | retained implementation using SciPy's HiGHS solver               | numerical and performance reference; never a fallback |
+| **pyihw**       | public pyihw 0.2.0 package                                       | external Python comparison                            |
+| **R IHW**       | Bioconductor IHW 1.40.0                                          | fixed parity authority and external timing comparison |
+| **BH**          | unweighted Benjamini-Hochberg                                    | statistical baseline only                             |
 
 `ihwkit` always means the production method in figures and tables. Longer internal method identifiers appear only in raw JSON.
 
@@ -23,21 +22,21 @@ This is the current measurement baseline for correctness, R parity, statistical 
 
 | question              |                           result | judgement                                                              |
 | --------------------- | -------------------------------: | ---------------------------------------------------------------------- |
-| repository tests      |                               ok | 100 passed in 2.56s                                                    |
-| generated correctness |                             pass | finite output and structural invariants on named cases                 |
+| repository tests      |                               ok | 83 passed in 1.46s                                                     |
+| generated correctness |                             pass | valid numerical output and structural invariants on named cases        |
 | fixed R parity        |                             pass | strong agreement inside the declared fixed synthetic envelope          |
-| numerical robustness  |              1 failed diagnostic | current release blocker; no fallback concealed the failures            |
+| numerical robustness  |             0 failed diagnostics | tested unregularized cases pass; broader robustness remains unclaimed  |
 | validity study        |             0 failed ihwkit fits | FDR and power remain conditional on successful fits                    |
 | FDR screen            |  0/6 intervals wholly above 0.10 | no clear inflation in these named scenarios; not a universal guarantee |
 | paired power          |  3/4 intervals wholly above zero | gains in three scenarios and a loss in the dense-covariate scenario    |
-| performance           | 20 process rows + 20 warmed rows | current direct-default measurements; no universal speed claim          |
+| performance           | 16 process rows + 16 warmed rows | current direct-default measurements; no universal speed claim          |
 
 ### Direct reading
 
 - **Numerical agreement is strong where it is defined.** The fixed five-fold synthetic replay agrees with R IHW in rejection decisions and full output vectors at errors far below the declared tolerance.
-- **Numerical reliability is not finished.** The remaining failed diagnostics stay visible in the detailed table. They block a blanket robustness claim, but no longer describe the default infinite-lambda path as failing.
+- **The named numerical envelope passes.** Every named robustness diagnostic passed; this remains evidence for the tested cases rather than a universal numerical guarantee.
 - **The development-scale statistical result is encouraging but conditional.** This is 1,000 replicates per null scenario and 200 per alternative scenario; 0 ihwkit failures are reported separately instead of converted to zero discoveries.
-- **Performance is favorable on the measured scaling inputs and remains size-dependent.** n=5000: median warmed-fit rank 1/5 (6.4x faster than the next measured method); median process-time rank 1/5 and median RSS rank 2/5; n=50000: median warmed-fit rank 1/5 (5.4x faster than the next measured method); median process-time rank 1/5 and median RSS rank 1/5.
+- **Performance is favorable on the measured scaling inputs and remains size-dependent.** n=5000: median warmed-fit rank 1/4 (6.9x faster than the next measured method); median process-time rank 1/4 and median RSS rank 1/4; n=50000: median warmed-fit rank 1/4 (5.1x faster than the next measured method); median process-time rank 1/4 and median RSS rank 1/4.
 - **The peer timing environment matches this study.** Peer measurements are reused only while that human-readable environment and protocol remain applicable.
 
 ## Statistical evidence
@@ -53,7 +52,7 @@ The FDR panel shows empirical estimates and 95% Monte Carlo intervals against no
 <details>
 <summary>Simulation designs and statistical estimands</summary>
 
-Every method receives the same truth-labelled draw at alpha 0.10. BH is unweighted; ihwkit uses five folds, automatic bin count, and infinite lambda. For each scenario:
+Every method receives the same truth-labelled draw at alpha 0.10. BH is unweighted; ihwkit uses five folds, automatic bin count, and the current unregularized allocation. For each scenario:
 
 - **Global null:** n=3,000; 1,000 attempts per method. All hypotheses are null; p-values and a continuous uniform covariate are independent.
 - **Tied null:** n=3,000; 1,000 attempts per method. All hypotheses are null; p-values are uniform and independent of a rounded, skewed log-normal covariate with ties.
@@ -74,7 +73,7 @@ FDR is the mean replicate false-discovery proportion. Under either all-null scen
   <img src="figures/02-process-cost-light.svg" alt="Absolute warmed-fit time, complete-process time, and peak RSS at 5k, 15k, and 50k hypotheses" width="100%">
 </picture>
 
-Each row is one explicit hypothesis-family size; point position is the sample mean and horizontal timing whiskers are +/- one sample standard deviation. Warmed Python fits remain inside one benchmark process after input construction. R IHW still includes serialization, the adapter, and an R process launch. Complete-process measurements launch a fresh command and therefore include startup, imports, deterministic input generation, solver work, and any method-specific initialization. Peak RSS is whole-process memory.
+Each row is one explicit hypothesis-family size; point position is the sample mean and horizontal timing whiskers are +/- one sample standard deviation. Warmed Python fits remain inside one benchmark process after input construction. R IHW still includes serialization, the adapter, and an R process launch. Complete-process measurements launch a fresh command and therefore include startup, imports, deterministic input generation, fitting work, and any method-specific initialization. Peak RSS is whole-process memory.
 
 The main scaling figures use exactly 5k, 15k, and 50k hypotheses, shown as explicit axis labels. The one-bin n=500 startup floor remains in the detailed tables but is excluded from the scaling figures.
 
@@ -118,32 +117,30 @@ Paired differences use only replicates where both BH and production succeeded. T
 
 ## Performance interpretation
 
-The default infinite-lambda path solves the separable Grenander allocation directly. Finite-lambda fits still use the general dense LP, so this optimization does not erase their numerical failures or imply a universal solver claim.
+ihwkit 0.1 solves the unregularized Grenander allocation directly in NumPy. The retained SciPy lane solves the same tested problem through a dense LP; it is a comparison, not a dependency or fallback.
 
-- **Measured position:** n=5000: median warmed-fit rank 1/5 (6.4x faster than the next measured method); median process-time rank 1/5 and median RSS rank 2/5; n=50000: median warmed-fit rank 1/5 (5.4x faster than the next measured method); median process-time rank 1/5 and median RSS rank 1/5.
+- **Measured position:** n=5000: median warmed-fit rank 1/4 (6.9x faster than the next measured method); median process-time rank 1/4 and median RSS rank 1/4; n=50000: median warmed-fit rank 1/4 (5.1x faster than the next measured method); median process-time rank 1/4 and median RSS rank 1/4.
 - **Complete process:** Import, method initialization, input construction, and fitting are intentionally combined because that is what a new command experiences.
 - **Scope contrast:** process divided by warmed-fit time is descriptive, not a pure startup decomposition. A large factor says that fit-only timing cannot explain command latency; it does not assign the difference to one component.
-- **Remaining numerical boundary:** the finite-lambda airway failure stays visible and blocks a blanket robustness claim.
+- **Numerical boundary:** these results cover the named unregularized cases only. Finite regularization remains roadmap work and receives no claim here.
 
 ### Representative measurements at 5k hypotheses
 
-| method          | warm median | process median | process / warm | process peak RSS | status |
-| --------------- | ----------: | -------------: | -------------: | ---------------: | :----: |
-| ihwkit          |    6.174 ms |     172.127 ms |          27.9x |          44.1 MB |   ok   |
-| NumPy reference |   55.337 ms |     209.335 ms |           3.8x |          43.2 MB |   ok   |
-| SciPy/HiGHS     |   63.630 ms |     494.740 ms |           7.8x |          84.3 MB |   ok   |
-| pyihw           |   39.574 ms |     478.462 ms |          12.1x |          85.1 MB |   ok   |
-| R IHW           |  447.078 ms |     611.577 ms |           1.4x |          93.1 MB |   ok   |
+| method      | warm median | process median | process / warm | process peak RSS | status |
+| ----------- | ----------: | -------------: | -------------: | ---------------: | :----: |
+| ihwkit      |    6.078 ms |     168.237 ms |          27.7x |          43.2 MB |   ok   |
+| SciPy/HiGHS |   62.089 ms |     522.423 ms |           8.4x |          83.8 MB |   ok   |
+| pyihw       |   42.137 ms |     515.299 ms |          12.2x |          85.2 MB |   ok   |
+| R IHW       |  465.610 ms |     645.235 ms |           1.4x |          93.0 MB |   ok   |
 
 <details>
 <summary>Protocol and comparability details</summary>
 
 The label key at the start of this report defines every implementation. SciPy/HiGHS is a retained comparison and never a production dependency or fallback. BH is a truth-labelled simulation baseline, not a solver-performance peer. pyihw participates in generated-input timing but cannot accept the fixed covariate groups required for stored-vector parity.
 
-All timed IHW lanes use alpha 0.1, five folds, automatic bin count, infinite lambda, seed 42, 3 warmups, and 10 measured samples. Exact parity instead uses the fixed R groups, folds, and fold lambdas stored with the reference.
-The NumPy reference uses the same direct infinite-lambda allocation without Numba and is measured at every displayed size.
+All timed IHW lanes use alpha 0.1, five folds, automatic bin count, the unregularized allocation, seed 42, 3 warmups, and 10 measured samples. Exact parity instead uses the fixed R groups and folds stored with the reference.
 
-The n=500 automatic configuration has one bin. R IHW correctly reduces that case to ordinary BH with one effective fold-lambda value; the adapter preserves that result. Because this is a one-bin shortcut dominated by startup, it remains in the detailed tables but not the main scaling figures.
+The n=500 automatic configuration has one bin. Every implementation reduces that case to ordinary BH. Because this shortcut is dominated by startup, it remains in the detailed tables but not the main scaling figures.
 
 </details>
 
@@ -152,14 +149,13 @@ The n=500 automatic configuration has one bin. R IHW correctly reduces that case
 
 Tolerance: absolute 1e-8 and relative 1e-6.
 
-| method          |    status   | R rej | method rej | max adjusted-p difference | max weight difference | decision agreement |
-| --------------- | :---------: | ----: | ---------: | ------------------------: | --------------------: | -----------------: |
-| ihwkit          |     pass    |   159 |        159 |                  4.33e-15 |              4.00e-15 |           100.000% |
-| NumPy reference |     pass    |   159 |        159 |                  1.89e-15 |              4.00e-15 |           100.000% |
-| SciPy/HiGHS     |     pass    |   159 |        159 |                  2.55e-15 |              4.00e-15 |           100.000% |
-| pyihw           | unavailable |   159 |            |                           |                       |                    |
+| method      |    status   | R rej | method rej | max adjusted-p difference | max weight difference | decision agreement |
+| ----------- | :---------: | ----: | ---------: | ------------------------: | --------------------: | -----------------: |
+| ihwkit      |     pass    |   159 |        159 |                  4.33e-15 |              4.00e-15 |           100.000% |
+| SciPy/HiGHS |     pass    |   159 |        159 |                  2.55e-15 |              4.00e-15 |           100.000% |
+| pyihw       | unavailable |   159 |            |                           |                       |                    |
 
-The release gate itself contains one-fold and five-fold synthetic replays. This expanded table shows the five-fold reference across compatible local solvers. An unavailable fixed-partition API is not counted as a parity failure.
+The release gate itself contains one-fold and five-fold synthetic replays. This expanded table shows the five-fold reference across compatible local methods. An unavailable fixed-partition API is not counted as a parity failure.
 
 </details>
 
@@ -168,107 +164,94 @@ The release gate itself contains one-fold and five-fold synthetic replays. This 
 
 #### Generated correctness
 
-| case                    | status | rejections | mean weight | error |
-| ----------------------- | :----: | ---------: | ----------: | ----- |
-| sim_500_seed42_inf_n1   |   ok   |          6 |    1.000000 |       |
-| dense_500_seed42_inf_n1 |   ok   |         45 |    1.000000 |       |
-| sim_5000_seed42_inf_n1  |   ok   |        163 |    1.000000 |       |
-| sim_50000_seed42_inf_n1 |   ok   |       1777 |    1.000000 |       |
-| sim_50000_seed42_inf_n5 |   ok   |       1694 |    1.000000 |       |
-| sim_5000_auto_native    |   ok   |        155 |    1.000000 |       |
+| case                | status | rejections | mean weight | error |
+| ------------------- | :----: | ---------: | ----------: | ----- |
+| sim_500_seed42_n1   |   ok   |          6 |    1.000000 |       |
+| dense_500_seed42_n1 |   ok   |         45 |    1.000000 |       |
+| sim_5000_seed42_n1  |   ok   |        163 |    1.000000 |       |
+| sim_50000_seed42_n1 |   ok   |       1777 |    1.000000 |       |
+| sim_50000_seed42_n5 |   ok   |       1694 |    1.000000 |       |
 
 #### Fixed and generated robustness
 
-| case                               | production | R rejections | BH on R weights | error                                                  |
-| ---------------------------------- | :--------: | -----------: | :-------------: | ------------------------------------------------------ |
-| sim_5000_inf_n1                    |    pass    |          163 |       pass      |                                                        |
-| sim_5000_inf_n5                    |    pass    |          159 |       pass      |                                                        |
-| sim_5000_auto                      |    pass    |          158 |       pass      |                                                        |
-| airway_inf_n1                      |    pass    |         4957 |       pass      |                                                        |
-| airway_inf_n5                      |    pass    |         4892 |       pass      |                                                        |
-| airway_auto                        |    fail    |         4887 |       pass      | RuntimeError: weight LP did not solve: iteration limit |
-| mixture_mild_n3000_seed2034_inf_n5 |     ok     |              |       n/a       |                                                        |
+| case                           | production | R rejections | BH on R weights | error |
+| ------------------------------ | :--------: | -----------: | :-------------: | ----- |
+| sim_5000_inf_n1                |    pass    |          163 |       pass      |       |
+| sim_5000_inf_n5                |    pass    |          159 |       pass      |       |
+| airway_inf_n1                  |    pass    |         4957 |       pass      |       |
+| airway_inf_n5                  |    pass    |         4892 |       pass      |       |
+| mixture_mild_n3000_seed2034_n5 |     ok     |              |       n/a       |       |
 
-#### Seed-2034 solver comparison
+#### Seed-2034 numerical comparison
 
-| method          | status | rejections | error |
-| --------------- | :----: | ---------: | ----- |
-| ihwkit          |   ok   |         51 |       |
-| NumPy reference |   ok   |         51 |       |
-| SciPy/HiGHS     |   ok   |         51 |       |
-| pyihw           |   ok   |         49 |       |
+| method      | status | rejections | error |
+| ----------- | :----: | ---------: | ----- |
+| ihwkit      |   ok   |         51 |       |
+| SciPy/HiGHS |   ok   |         50 |       |
+| pyihw       |   ok   |         49 |       |
 
-Weighted BH using stored R weights passes on every airway row. The remaining finite-lambda `airway_auto` error occurs before final p-value adjustment, while both infinite-lambda airway fits now pass. Successful peer fits show that a production failure is not evidence that the mathematical LP is infeasible.
+Weighted BH using stored R weights passes on every retained airway row. The one-fold and five-fold airway replays test the current unregularized method on a real-data shape; they do not validate unimplemented finite regularization.
 
 </details>
 
 <details>
 <summary>All complete-process measurements</summary>
 
-|     n | bins | method          | samples | median wall |  mean wall |   wall SD | median RSS | status |
-| ----: | ---: | --------------- | ------: | ----------: | ---------: | --------: | ---------: | :----: |
-|   500 |    1 | ihwkit          |      10 |  165.104 ms | 166.801 ms | 13.994 ms |    43.2 MB |   ok   |
-|   500 |    1 | NumPy reference |      10 |  162.499 ms | 163.379 ms | 14.730 ms |    42.5 MB |   ok   |
-|   500 |    1 | SciPy/HiGHS     |      10 |  148.023 ms | 152.682 ms | 10.862 ms |    42.5 MB |   ok   |
-|   500 |    1 | pyihw           |      10 |  421.188 ms | 427.734 ms | 22.827 ms |    81.8 MB |   ok   |
-|   500 |    1 | R IHW           |      10 |  525.272 ms | 531.391 ms | 13.682 ms |    86.1 MB |   ok   |
-|  5000 |    3 | ihwkit          |      10 |  172.127 ms | 174.764 ms | 13.090 ms |    44.1 MB |   ok   |
-|  5000 |    3 | NumPy reference |      10 |  209.335 ms | 211.068 ms |  8.415 ms |    43.2 MB |   ok   |
-|  5000 |    3 | SciPy/HiGHS     |      10 |  494.740 ms | 493.272 ms | 18.455 ms |    84.3 MB |   ok   |
-|  5000 |    3 | pyihw           |      10 |  478.462 ms | 473.564 ms | 16.129 ms |    85.1 MB |   ok   |
-|  5000 |    3 | R IHW           |      10 |  611.577 ms | 613.234 ms | 12.271 ms |    93.1 MB |   ok   |
-| 15000 |   10 | ihwkit          |      10 |  186.759 ms | 187.516 ms | 10.130 ms |    45.3 MB |   ok   |
-| 15000 |   10 | NumPy reference |      10 |  321.843 ms | 323.711 ms | 10.423 ms |    44.9 MB |   ok   |
-| 15000 |   10 | SciPy/HiGHS     |      10 |  598.988 ms | 597.108 ms | 12.710 ms |    85.7 MB |   ok   |
-| 15000 |   10 | pyihw           |      10 |  535.948 ms | 538.332 ms | 12.518 ms |    86.5 MB |   ok   |
-| 15000 |   10 | R IHW           |      10 |  720.838 ms | 717.759 ms | 13.464 ms |   107.2 MB |   ok   |
-| 50000 |   33 | ihwkit          |      10 |  240.803 ms | 243.768 ms |  8.499 ms |    49.8 MB |   ok   |
-| 50000 |   33 | NumPy reference |      10 |  734.558 ms | 737.423 ms | 17.316 ms |    50.6 MB |   ok   |
-| 50000 |   33 | SciPy/HiGHS     |      10 |     1.009 s |    1.011 s | 13.936 ms |    92.0 MB |   ok   |
-| 50000 |   33 | pyihw           |      10 |  781.998 ms | 781.283 ms | 11.841 ms |    93.0 MB |   ok   |
-| 50000 |   33 | R IHW           |      10 |     1.073 s |    1.070 s | 11.969 ms |   142.1 MB |   ok   |
+|     n | bins | method      | samples | median wall |  mean wall |   wall SD | median RSS | status |
+| ----: | ---: | ----------- | ------: | ----------: | ---------: | --------: | ---------: | :----: |
+|   500 |    1 | ihwkit      |      10 |  158.995 ms | 161.165 ms |  9.721 ms |    42.2 MB |   ok   |
+|   500 |    1 | SciPy/HiGHS |      10 |  158.540 ms | 162.225 ms | 13.782 ms |    42.1 MB |   ok   |
+|   500 |    1 | pyihw       |      10 |  491.308 ms | 480.948 ms | 28.334 ms |    81.4 MB |   ok   |
+|   500 |    1 | R IHW       |      10 |  557.568 ms | 559.380 ms | 25.880 ms |    86.1 MB |   ok   |
+|  5000 |    3 | ihwkit      |      10 |  168.237 ms | 170.367 ms | 11.187 ms |    43.2 MB |   ok   |
+|  5000 |    3 | SciPy/HiGHS |      10 |  522.423 ms | 516.317 ms | 30.688 ms |    83.8 MB |   ok   |
+|  5000 |    3 | pyihw       |      10 |  515.299 ms | 514.606 ms | 33.868 ms |    85.2 MB |   ok   |
+|  5000 |    3 | R IHW       |      10 |  645.235 ms | 639.272 ms | 18.721 ms |    93.0 MB |   ok   |
+| 15000 |   10 | ihwkit      |      10 |  179.858 ms | 185.602 ms | 14.877 ms |    44.2 MB |   ok   |
+| 15000 |   10 | SciPy/HiGHS |      10 |  646.925 ms | 644.959 ms | 33.850 ms |    84.7 MB |   ok   |
+| 15000 |   10 | pyihw       |      10 |  561.285 ms | 564.004 ms | 18.392 ms |    86.6 MB |   ok   |
+| 15000 |   10 | R IHW       |      10 |  745.303 ms | 753.737 ms | 22.535 ms |   107.3 MB |   ok   |
+| 50000 |   33 | ihwkit      |      10 |  239.464 ms | 238.320 ms |  4.114 ms |    49.4 MB |   ok   |
+| 50000 |   33 | SciPy/HiGHS |      10 |     1.008 s |    1.005 s | 26.793 ms |    90.7 MB |   ok   |
+| 50000 |   33 | pyihw       |      10 |  795.833 ms | 792.163 ms | 19.039 ms |    92.8 MB |   ok   |
+| 50000 |   33 | R IHW       |      10 |     1.081 s |    1.079 s | 15.812 ms |   141.8 MB |   ok   |
 
 </details>
 
 <details>
 <summary>All warmed-fit measurements</summary>
 
-|     n | bins | method          | samples | median wall |  mean wall |    wall SD | status |
-| ----: | ---: | --------------- | ------: | ----------: | ---------: | ---------: | :----: |
-|   500 |    1 | ihwkit          |      10 |  185.476 us | 188.719 us |   9.735 us |   ok   |
-|   500 |    1 | NumPy reference |      10 |  209.761 us | 215.256 us |  13.977 us |   ok   |
-|   500 |    1 | SciPy/HiGHS     |      10 |  215.111 us | 216.797 us |  15.382 us |   ok   |
-|   500 |    1 | pyihw           |      10 |  199.231 us | 201.833 us |   6.407 us |   ok   |
-|   500 |    1 | R IHW           |      10 |  367.902 ms | 369.871 ms |  13.348 ms |   ok   |
-|  5000 |    3 | ihwkit          |      10 |    6.174 ms |   6.230 ms | 130.104 us |   ok   |
-|  5000 |    3 | NumPy reference |      10 |   55.337 ms |  55.618 ms |   1.078 ms |   ok   |
-|  5000 |    3 | SciPy/HiGHS     |      10 |   63.630 ms |  63.647 ms | 570.592 us |   ok   |
-|  5000 |    3 | pyihw           |      10 |   39.574 ms |  39.524 ms | 378.686 us |   ok   |
-|  5000 |    3 | R IHW           |      10 |  447.078 ms | 450.416 ms |   7.822 ms |   ok   |
-| 15000 |   10 | ihwkit          |      10 |   18.762 ms |  18.708 ms | 206.141 us |   ok   |
-| 15000 |   10 | NumPy reference |      10 |  165.919 ms | 167.490 ms |   5.272 ms |   ok   |
-| 15000 |   10 | SciPy/HiGHS     |      10 |  173.256 ms | 173.092 ms | 655.101 us |   ok   |
-| 15000 |   10 | pyihw           |      10 |  102.757 ms | 102.847 ms | 649.374 us |   ok   |
-| 15000 |   10 | R IHW           |      10 |  546.110 ms | 544.323 ms |   6.318 ms |   ok   |
-| 50000 |   33 | ihwkit          |      10 |   60.666 ms |  60.962 ms | 688.579 us |   ok   |
-| 50000 |   33 | NumPy reference |      10 |  541.390 ms | 543.783 ms |   7.655 ms |   ok   |
-| 50000 |   33 | SciPy/HiGHS     |      10 |  574.499 ms | 574.017 ms |   5.521 ms |   ok   |
-| 50000 |   33 | pyihw           |      10 |  328.129 ms | 329.452 ms |   3.324 ms |   ok   |
-| 50000 |   33 | R IHW           |      10 |  885.916 ms | 884.549 ms |  10.964 ms |   ok   |
+|     n | bins | method      | samples | median wall |  mean wall |    wall SD | status |
+| ----: | ---: | ----------- | ------: | ----------: | ---------: | ---------: | :----: |
+|   500 |    1 | ihwkit      |      10 |  174.550 us | 176.742 us |   8.130 us |   ok   |
+|   500 |    1 | SciPy/HiGHS |      10 |  365.491 us | 368.219 us |  22.521 us |   ok   |
+|   500 |    1 | pyihw       |      10 |  207.656 us | 207.538 us |   9.877 us |   ok   |
+|   500 |    1 | R IHW       |      10 |  377.670 ms | 377.792 ms |   8.505 ms |   ok   |
+|  5000 |    3 | ihwkit      |      10 |    6.078 ms |   6.093 ms |  48.271 us |   ok   |
+|  5000 |    3 | SciPy/HiGHS |      10 |   62.089 ms |  62.478 ms |   1.037 ms |   ok   |
+|  5000 |    3 | pyihw       |      10 |   42.137 ms |  44.219 ms |   4.200 ms |   ok   |
+|  5000 |    3 | R IHW       |      10 |  465.610 ms | 466.617 ms |  11.879 ms |   ok   |
+| 15000 |   10 | ihwkit      |      10 |   19.554 ms |  19.490 ms | 241.434 us |   ok   |
+| 15000 |   10 | SciPy/HiGHS |      10 |  172.027 ms | 174.956 ms |   7.814 ms |   ok   |
+| 15000 |   10 | pyihw       |      10 |  104.621 ms | 104.457 ms |   1.360 ms |   ok   |
+| 15000 |   10 | R IHW       |      10 |  585.806 ms | 585.917 ms |  13.372 ms |   ok   |
+| 50000 |   33 | ihwkit      |      10 |   65.740 ms |  66.596 ms |   3.457 ms |   ok   |
+| 50000 |   33 | SciPy/HiGHS |      10 |  565.586 ms | 571.140 ms |  13.738 ms |   ok   |
+| 50000 |   33 | pyihw       |      10 |  333.995 ms | 334.580 ms |   3.683 ms |   ok   |
+| 50000 |   33 | R IHW       |      10 |  912.838 ms | 920.527 ms |  32.438 ms |   ok   |
 
 </details>
 
 <details>
 <summary>Environment, retained data, and rerun commands</summary>
 
-Peer timing recorded: 2026-08-30T02:54:46+00:00
+Peer timing recorded: 2026-08-30T03:25:49+00:00
 
 - **platform:** Linux-7.1.10-200.fc44.x86_64-x86_64-with-glibc2.43
 - **cpu:** AMD Ryzen 9 3950X 16-Core Processor
 - **logical_cpus:** 32
 - **python:** 3.14.7
 - **numpy:** 2.5.2
-- **numba:** 0.67.0
 - **scipy:** 1.18.1
 - **pyihw:** 0.2.0
 - **zebrac:** zebrac 0.6.2
@@ -278,13 +261,13 @@ The retained datasets are deterministic generated draws and the two self-contain
 Run the complete study, reusing the dated peer timing table:
 
 ```bash
-uv run --no-project --with pytest --with numpy --with numba --with scipy --with pyihw==0.2.0 --with matplotlib python -m bench study
+uv run --no-project --with pytest --with numpy --with scipy --with pyihw==0.2.0 --with matplotlib python -m bench study
 ```
 
 Refresh unchanged peers only when their code, runtime, machine, or benchmark protocol changes:
 
 ```bash
-uv run --no-project --with pytest --with numpy --with numba --with scipy --with pyihw==0.2.0 --with matplotlib python -m bench study --refresh-peers
+uv run --no-project --with pytest --with numpy --with scipy --with pyihw==0.2.0 --with matplotlib python -m bench study --refresh-peers
 ```
 
 Render the report again without rerunning measurements:
@@ -300,7 +283,8 @@ uv run --no-project --with numpy --with matplotlib python -m bench report
 - The current real-data evidence is one airway shape. It is a useful numerical stress case, not broad real-data coverage.
 - No reviewed local single-cell export is present, so real single-cell calibration, realistic count-based power, and donor-stability panels remain unmeasured.
 - The statistical simulations assume the named data-generating mechanisms. They do not establish FDR control under arbitrary dependence, discrete p-values, or invalid covariates.
-- Peak RSS is whole-process memory. It cannot be interpreted as solver allocation alone.
+- Finite regularization, broader statistical procedures, and diagnostic plotting remain future work, not hidden 0.1 features.
+- Peak RSS is whole-process memory. It cannot be interpreted as method-specific allocation alone.
 - Machine-local performance is evidence for this environment, not a universal speed or memory guarantee.
 
 The simulation structure follows the ADEMP framework from [Morris, White, and Crowther (2019)](https://doi.org/10.1002/sim.8086). The separation of datasets, metrics, failures, and method scope follows the benchmarking guidance of [Weber et al. (2019)](https://doi.org/10.1186/s13059-019-1738-8). The report layout borrows z-fasta's useful pattern of correctness-first execution, absolute and ratio plots, and collapsible detailed evidence while intentionally using a much smaller local implementation.

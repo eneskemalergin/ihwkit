@@ -62,16 +62,13 @@ PEER_METHODS = tuple(method for method in METHODS if method != PRODUCTION)
 METHOD_LABELS = {
     "bh": "BH",
     "ihw_inf_cv": "ihwkit",
-    "ihw_auto_cv": "ihwkit auto",
     "ihwkit": "ihwkit",
-    "ihwkit_numpy": "NumPy reference",
     "ihwkit_scipy": "SciPy/HiGHS",
     "pyihw": "pyihw",
     "r_ihw": "R IHW",
 }
 METHOD_MARKERS = {
     "ihwkit": "o",
-    "ihwkit_numpy": "s",
     "ihwkit_scipy": "^",
     "pyihw": "D",
     "r_ihw": "P",
@@ -298,7 +295,7 @@ def _run_peer_parity() -> list[PeerParityRow]:
     config = RunConfig(alpha=0.1, nbins=3, nfolds=5, seed=42)
     decisions = record.adjusted_pvalues <= config.alpha
     rows: list[PeerParityRow] = []
-    for method_id in (PRODUCTION, "ihwkit_numpy", "ihwkit_scipy", "pyihw"):
+    for method_id in (PRODUCTION, "ihwkit_scipy", "pyihw"):
         try:
             result = fit(method_id, record.peer_input, config)
             if result.weights is None:
@@ -370,7 +367,7 @@ def _run_stress_peers() -> list[dict[str, object]]:
     )
     config = RunConfig(alpha=0.1, nbins="auto", nfolds=5, seed=2_034)
     rows: list[dict[str, object]] = []
-    for method_id in (PRODUCTION, "ihwkit_numpy", "ihwkit_scipy", "pyihw"):
+    for method_id in (PRODUCTION, "ihwkit_scipy", "pyihw"):
         try:
             result = fit(method_id, peer_input, config)
         except Exception as exc:  # noqa: BLE001 - every peer outcome is evidence
@@ -577,7 +574,6 @@ def _write_peer_baseline(
             "alpha": 0.1,
             "nfolds": 5,
             "nbins": "auto",
-            "lambda_policy": "inf",
             "seed": 42,
             "warmups": warmups,
             "samples": samples,
@@ -770,15 +766,21 @@ def _report_lines(
         f"{'s' if robustness_failures != 1 else ''}"
     )
     if robustness_failures:
+        reliability_heading = "Numerical reliability has visible failures."
         reliability_summary = (
             "The remaining failed diagnostics stay visible in the detailed table. "
             "They block a blanket robustness claim, but no longer describe the "
-            "default infinite-lambda path as failing."
+            "current unregularized path as failing."
         )
+        robustness_judgement = "failed named diagnostics block a release claim"
     else:
+        reliability_heading = "The named numerical envelope passes."
         reliability_summary = (
             "Every named robustness diagnostic passed; this remains evidence for "
-            "the tested cases rather than a universal solver guarantee."
+            "the tested cases rather than a universal numerical guarantee."
+        )
+        robustness_judgement = (
+            "tested unregularized cases pass; broader robustness remains unclaimed"
         )
     validity_failures = sum(
         int(row["failures"]) for row in validity if row["method_id"] != "bh"
@@ -802,7 +804,7 @@ def _report_lines(
     baseline_environment = _mapping(baseline.get("environment", {}))
     environment_differences = [
         key
-        for key in ("platform", "cpu", "python", "numpy", "numba", "zebrac")
+        for key in ("platform", "cpu", "python", "numpy", "scipy", "zebrac")
         if baseline_environment.get(key) != study_environment.get(key)
     ]
     performance_headline = _performance_headline(warm_rows, process_rows)
@@ -819,8 +821,7 @@ def _report_lines(
         "",
         "| label | implementation | role in this report |",
         "|---|---|---|",
-        "| **ihwkit** | installable low-memory NumPy default; optional finite-lambda Numba solver | subject under evaluation |",
-        "| **NumPy reference** | NumPy-only direct default plus dense finite-lambda simplex | correctness and scaling reference, not installable API |",
+        "| **ihwkit** | installable low-memory NumPy method; five-fold unregularized IHW | subject under evaluation |",
         "| **SciPy/HiGHS** | retained implementation using SciPy's HiGHS solver | numerical and performance reference; never a fallback |",
         "| **pyihw** | public pyihw 0.2.0 package | external Python comparison |",
         "| **R IHW** | Bioconductor IHW 1.40.0 | fixed parity authority and external timing comparison |",
@@ -833,9 +834,9 @@ def _report_lines(
         "| question | result | judgement |",
         "|---|---:|---|",
         f"| repository tests | {test_status} | {test_summary} |",
-        f"| generated correctness | {'pass' if correctness_pass else 'fail'} | finite output and structural invariants on named cases |",
+        f"| generated correctness | {'pass' if correctness_pass else 'fail'} | valid numerical output and structural invariants on named cases |",
         f"| fixed R parity | {'pass' if parity_pass else 'fail'} | strong agreement inside the declared fixed synthetic envelope |",
-        f"| numerical robustness | {robustness_failure_label} | current release blocker; no fallback concealed the failures |",
+        f"| numerical robustness | {robustness_failure_label} | {robustness_judgement} |",
         f"| validity study | {validity_failures} failed ihwkit fits | FDR and power remain conditional on successful fits |",
         f"| FDR screen | {fdr_above_nominal}/{len(production_validity)} intervals wholly above 0.10 | no clear inflation in these named scenarios; not a universal guarantee |",
         f"| paired power | {materially_positive_power}/{paired_power_scenarios} intervals wholly above zero | gains in three scenarios and a loss in the dense-covariate scenario |",
@@ -844,7 +845,7 @@ def _report_lines(
         "### Direct reading",
         "",
         "- **Numerical agreement is strong where it is defined.** The fixed five-fold synthetic replay agrees with R IHW in rejection decisions and full output vectors at errors far below the declared tolerance.",
-        f"- **Numerical reliability is not finished.** {reliability_summary}",
+        f"- **{reliability_heading}** {reliability_summary}",
         f"- **The development-scale statistical result is encouraging but conditional.** This is {'a quick wiring run' if quick else '1,000 replicates per null scenario and 200 per alternative scenario'}; {validity_failures} ihwkit failures are reported separately instead of converted to zero discoveries.",
         f"- **Performance is favorable on the measured scaling inputs and remains size-dependent.** {performance_headline}",
         f"- **The peer timing environment {'matches this study' if not environment_differences else 'differs on ' + ', '.join(environment_differences)}.** Peer measurements are reused only while that human-readable environment and protocol remain applicable.",
@@ -867,7 +868,7 @@ def _report_lines(
             "Absolute warmed-fit time, complete-process time, and peak RSS at 5k, 15k, and 50k hypotheses",
         ),
         "",
-        "Each row is one explicit hypothesis-family size; point position is the sample mean and horizontal timing whiskers are +/- one sample standard deviation. Warmed Python fits remain inside one benchmark process after input construction. R IHW still includes serialization, the adapter, and an R process launch. Complete-process measurements launch a fresh command and therefore include startup, imports, deterministic input generation, solver work, and any method-specific initialization. Peak RSS is whole-process memory.",
+        "Each row is one explicit hypothesis-family size; point position is the sample mean and horizontal timing whiskers are +/- one sample standard deviation. Warmed Python fits remain inside one benchmark process after input construction. R IHW still includes serialization, the adapter, and an R process launch. Complete-process measurements launch a fresh command and therefore include startup, imports, deterministic input generation, fitting work, and any method-specific initialization. Peak RSS is whole-process memory.",
         "",
         "The main scaling figures use exactly 5k, 15k, and 50k hypotheses, shown as explicit axis labels. The one-bin n=500 startup floor remains in the detailed tables but is excluded from the scaling figures.",
         "",
@@ -913,12 +914,12 @@ def _report_lines(
             "",
             "## Performance interpretation",
             "",
-            "The default infinite-lambda path solves the separable Grenander allocation directly. Finite-lambda fits still use the general dense LP, so this optimization does not erase their numerical failures or imply a universal solver claim.",
+            "ihwkit 0.1 solves the unregularized Grenander allocation directly in NumPy. The retained SciPy lane solves the same tested problem through a dense LP; it is a comparison, not a dependency or fallback.",
             "",
             f"- **Measured position:** {performance_headline}",
             "- **Complete process:** Import, method initialization, input construction, and fitting are intentionally combined because that is what a new command experiences.",
             "- **Scope contrast:** process divided by warmed-fit time is descriptive, not a pure startup decomposition. A large factor says that fit-only timing cannot explain command latency; it does not assign the difference to one component.",
-            "- **Remaining numerical boundary:** the finite-lambda airway failure stays visible and blocks a blanket robustness claim.",
+            "- **Numerical boundary:** these results cover the named unregularized cases only. Finite regularization remains roadmap work and receives no claim here.",
             "",
             "### Representative measurements at 5k hypotheses",
             "",
@@ -942,10 +943,9 @@ def _report_lines(
             "",
             "The label key at the start of this report defines every implementation. SciPy/HiGHS is a retained comparison and never a production dependency or fallback. BH is a truth-labelled simulation baseline, not a solver-performance peer. pyihw participates in generated-input timing but cannot accept the fixed covariate groups required for stored-vector parity.",
             "",
-            f"All timed IHW lanes use alpha 0.1, five folds, automatic bin count, infinite lambda, seed 42, {int(_mapping(baseline['configuration'])['warmups'])} warmups, and {int(_mapping(baseline['configuration'])['samples'])} measured samples. Exact parity instead uses the fixed R groups, folds, and fold lambdas stored with the reference.",
-            "The NumPy reference uses the same direct infinite-lambda allocation without Numba and is measured at every displayed size.",
+            f"All timed IHW lanes use alpha 0.1, five folds, automatic bin count, the unregularized allocation, seed 42, {int(_mapping(baseline['configuration'])['warmups'])} warmups, and {int(_mapping(baseline['configuration'])['samples'])} measured samples. Exact parity instead uses the fixed R groups and folds stored with the reference.",
             "",
-            "The n=500 automatic configuration has one bin. R IHW correctly reduces that case to ordinary BH with one effective fold-lambda value; the adapter preserves that result. Because this is a one-bin shortcut dominated by startup, it remains in the detailed tables but not the main scaling figures.",
+            "The n=500 automatic configuration has one bin. Every implementation reduces that case to ordinary BH. Because this shortcut is dominated by startup, it remains in the detailed tables but not the main scaling figures.",
             "",
             "</details>",
             "",
@@ -967,7 +967,7 @@ def _report_lines(
     lines.extend(
         [
             "",
-            "The release gate itself contains one-fold and five-fold synthetic replays. This expanded table shows the five-fold reference across compatible local solvers. An unavailable fixed-partition API is not counted as a parity failure.",
+            "The release gate itself contains one-fold and five-fold synthetic replays. This expanded table shows the five-fold reference across compatible local methods. An unavailable fixed-partition API is not counted as a parity failure.",
             "",
             "</details>",
             "",
@@ -1009,7 +1009,7 @@ def _report_lines(
     lines.extend(
         [
             "",
-            "#### Seed-2034 solver comparison",
+            "#### Seed-2034 numerical comparison",
             "",
             "| method | status | rejections | error |",
             "|---|:---:|---:|---|",
@@ -1023,7 +1023,7 @@ def _report_lines(
     lines.extend(
         [
             "",
-            "Weighted BH using stored R weights passes on every airway row. The remaining finite-lambda `airway_auto` error occurs before final p-value adjustment, while both infinite-lambda airway fits now pass. Successful peer fits show that a production failure is not evidence that the mathematical LP is infeasible.",
+            "Weighted BH using stored R weights passes on every retained airway row. The one-fold and five-fold airway replays test the current unregularized method on a real-data shape; they do not validate unimplemented finite regularization.",
             "",
             "</details>",
             "",
@@ -1067,7 +1067,6 @@ def _report_lines(
         "logical_cpus",
         "python",
         "numpy",
-        "numba",
         "scipy",
         "pyihw",
         "zebrac",
@@ -1081,13 +1080,13 @@ def _report_lines(
             "Run the complete study, reusing the dated peer timing table:",
             "",
             "```bash",
-            "uv run --no-project --with pytest --with numpy --with numba --with scipy --with pyihw==0.2.0 --with matplotlib python -m bench study",
+            "uv run --no-project --with pytest --with numpy --with scipy --with pyihw==0.2.0 --with matplotlib python -m bench study",
             "```",
             "",
             "Refresh unchanged peers only when their code, runtime, machine, or benchmark protocol changes:",
             "",
             "```bash",
-            "uv run --no-project --with pytest --with numpy --with numba --with scipy --with pyihw==0.2.0 --with matplotlib python -m bench study --refresh-peers",
+            "uv run --no-project --with pytest --with numpy --with scipy --with pyihw==0.2.0 --with matplotlib python -m bench study --refresh-peers",
             "```",
             "",
             "Render the report again without rerunning measurements:",
@@ -1103,7 +1102,8 @@ def _report_lines(
             "- The current real-data evidence is one airway shape. It is a useful numerical stress case, not broad real-data coverage.",
             "- No reviewed local single-cell export is present, so real single-cell calibration, realistic count-based power, and donor-stability panels remain unmeasured.",
             "- The statistical simulations assume the named data-generating mechanisms. They do not establish FDR control under arbitrary dependence, discrete p-values, or invalid covariates.",
-            "- Peak RSS is whole-process memory. It cannot be interpreted as solver allocation alone.",
+            "- Finite regularization, broader statistical procedures, and diagnostic plotting remain future work, not hidden 0.1 features.",
+            "- Peak RSS is whole-process memory. It cannot be interpreted as method-specific allocation alone.",
             "- Machine-local performance is evidence for this environment, not a universal speed or memory guarantee.",
             "",
             "The simulation structure follows the ADEMP framework from [Morris, White, and Crowther (2019)](https://doi.org/10.1002/sim.8086). The separation of datasets, metrics, failures, and method scope follows the benchmarking guidance of [Weber et al. (2019)](https://doi.org/10.1186/s13059-019-1738-8). The report layout borrows z-fasta's useful pattern of correctness-first execution, absolute and ratio plots, and collapsible detailed evidence while intentionally using a much smaller local implementation.",
@@ -1127,7 +1127,7 @@ def _scenario_design_lines(
         "<details>",
         "<summary>Simulation designs and statistical estimands</summary>",
         "",
-        "Every method receives the same truth-labelled draw at alpha 0.10. BH is unweighted; ihwkit uses five folds, automatic bin count, and infinite lambda. For each scenario:",
+        "Every method receives the same truth-labelled draw at alpha 0.10. BH is unweighted; ihwkit uses five folds, automatic bin count, and the current unregularized allocation. For each scenario:",
         "",
     ]
     for scenario_id in SCENARIO_ORDER:
@@ -1197,7 +1197,6 @@ def _figure_theme(dark: bool) -> FigureTheme:
             accent="#FF9D2E",
             method_colors={
                 PRODUCTION: "#FF9D2E",
-                "ihwkit_numpy": "#A7B0B8",
                 "ihwkit_scipy": "#35C2A3",
                 "pyihw": "#66A9E8",
                 "r_ihw": "#E084B7",
@@ -1213,7 +1212,6 @@ def _figure_theme(dark: bool) -> FigureTheme:
         accent="#B66C11",
         method_colors={
             PRODUCTION: "#E87500",
-            "ihwkit_numpy": "#68717A",
             "ihwkit_scipy": "#008C72",
             "pyihw": "#2F6DAA",
             "r_ihw": "#B85C91",
@@ -1775,7 +1773,7 @@ def _absolute_cost_figure(
             (
                 "Interpretation",
                 "Warm fit isolates repeated calls; process cost reflects a new command",
-                "RSS is whole-process memory, not solver allocation",
+                "RSS is whole-process memory, not method allocation",
             ),
         ),
     )
@@ -2327,7 +2325,6 @@ def _environment() -> dict[str, str]:
         "logical_cpus": str(os.cpu_count() or "unknown"),
         "python": platform.python_version(),
         "numpy": np.__version__,
-        "numba": _package_version("numba"),
         "scipy": _package_version("scipy"),
         "pyihw": _package_version("pyihw"),
         "zebrac": _command_version("zebrac"),

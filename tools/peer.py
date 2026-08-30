@@ -28,10 +28,8 @@ from tools.simulators import dense_covariate, ignatiadis
 FloatArray = NDArray[np.float64]
 IntegerArray = NDArray[np.intp]
 BooleanArray = NDArray[np.bool_]
-LambdaPolicy = Literal["inf", "auto"]
 MethodId = Literal[
     "ihwkit",
-    "ihwkit_numpy",
     "ihwkit_scipy",
     "pyihw",
     "r_ihw",
@@ -39,7 +37,6 @@ MethodId = Literal[
 
 METHODS: tuple[MethodId, ...] = (
     "ihwkit",
-    "ihwkit_numpy",
     "ihwkit_scipy",
     "pyihw",
     "r_ihw",
@@ -49,7 +46,7 @@ R_SCRIPT = Path(__file__).with_name("peer.R")
 
 @dataclass(frozen=True, slots=True)
 class ReferenceSpec:
-    """Name one immutable R result inside a dataset reference file."""
+    """Name one fixed R result inside a dataset reference file."""
 
     reference_id: str
     dataset_id: str
@@ -59,7 +56,6 @@ class ReferenceSpec:
     alpha: float
     nbins: int
     nfolds: int
-    lambda_policy: LambdaPolicy
     seed: int
 
 
@@ -73,7 +69,6 @@ REFERENCE_SPECS: tuple[ReferenceSpec, ...] = (
         0.1,
         3,
         1,
-        "inf",
         42,
     ),
     ReferenceSpec(
@@ -85,19 +80,6 @@ REFERENCE_SPECS: tuple[ReferenceSpec, ...] = (
         0.1,
         3,
         5,
-        "inf",
-        42,
-    ),
-    ReferenceSpec(
-        "sim_5000_auto",
-        "sim_5000_seed42",
-        Path("bench/data/sim_5000_r_ihw_1_40_0.npz"),
-        "auto",
-        False,
-        0.1,
-        3,
-        5,
-        "auto",
         42,
     ),
     ReferenceSpec(
@@ -109,7 +91,6 @@ REFERENCE_SPECS: tuple[ReferenceSpec, ...] = (
         0.1,
         22,
         1,
-        "inf",
         42,
     ),
     ReferenceSpec(
@@ -121,19 +102,6 @@ REFERENCE_SPECS: tuple[ReferenceSpec, ...] = (
         0.1,
         22,
         5,
-        "inf",
-        42,
-    ),
-    ReferenceSpec(
-        "airway_auto",
-        "airway",
-        Path("bench/data/airway_r_ihw_1_40_0.npz"),
-        "auto",
-        False,
-        0.1,
-        22,
-        5,
-        "auto",
         42,
     ),
 )
@@ -159,13 +127,12 @@ class PeerInput:
     truth_labels: BooleanArray | None = None
     groups: IntegerArray | None = None
     folds: IntegerArray | None = None
-    fold_lambdas: FloatArray | None = None
     reference_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
 class ReferenceRecord:
-    """Store immutable R output and the exact input used to produce it."""
+    """Store fixed R output and the exact input used to produce it."""
 
     spec: ReferenceSpec
     peer_input: PeerInput
@@ -186,7 +153,6 @@ class RunConfig:
     alpha: float = 0.1
     nbins: int | str = "auto"
     nfolds: int | None = None
-    lambda_policy: LambdaPolicy = "inf"
     adjustment_type: str = "bh"
     seed: int = 42
 
@@ -197,7 +163,6 @@ class RunConfig:
             "alpha": self.alpha,
             "nbins": self.nbins,
             "nfolds": self.nfolds,
-            "lambda_policy": self.lambda_policy,
             "adjustment_type": self.adjustment_type,
             "seed": self.seed,
         }
@@ -220,7 +185,6 @@ class RReferenceResult:
     fit: FitResult
     groups: IntegerArray
     folds: IntegerArray
-    fold_lambdas: FloatArray
 
 
 def load_peer_input(dataset_id: str, *, reference_id: str | None = None) -> PeerInput:
@@ -284,7 +248,7 @@ def load_peer_input(dataset_id: str, *, reference_id: str | None = None) -> Peer
 
 
 def load_reference(reference_id: str) -> ReferenceRecord:
-    """Load one immutable R result and its exact input and partitions."""
+    """Load one fixed R result and its exact input and partitions."""
 
     spec = _reference_spec(reference_id)
     path = ROOT / spec.relative_path
@@ -302,7 +266,6 @@ def load_reference(reference_id: str) -> ReferenceRecord:
                 archive, prefix + "adjusted_pvalues", np.float64, size
             )
             weights = _archive_vector(archive, prefix + "weights", np.float64, size)
-            lambdas = _reference_lambdas(archive, prefix, spec.nfolds)
             rejections = _archive_scalar(archive, prefix + "rejections", int)
             metadata = {
                 "reference_id": reference_id,
@@ -314,9 +277,6 @@ def load_reference(reference_id: str) -> ReferenceRecord:
                 "alpha": float(_archive_scalar(archive, prefix + "alpha", float)),
                 "nbins": _archive_scalar(archive, prefix + "nbins", int),
                 "nfolds": _archive_scalar(archive, prefix + "nfolds", int),
-                "lambda_policy": _archive_scalar(
-                    archive, prefix + "lambda_policy", str
-                ),
                 "seed": _archive_scalar(archive, prefix + "seed", int),
             }
     except (OSError, ValueError, KeyError) as exc:
@@ -335,7 +295,6 @@ def load_reference(reference_id: str) -> ReferenceRecord:
             covariates=covariates,
             groups=groups,
             folds=folds,
-            fold_lambdas=lambdas,
             reference_id=reference_id,
         )
     )
@@ -385,10 +344,8 @@ def fit(method_id: MethodId, peer_input: PeerInput, config: RunConfig) -> FitRes
 
     if method_id == "ihwkit":
         result = _fit_production(peer_input, config)
-    elif method_id == "ihwkit_numpy":
-        result = _fit_legacy(peer_input, config, backend="numpy")
     elif method_id == "ihwkit_scipy":
-        result = _fit_legacy(peer_input, config, backend="highs")
+        result = _fit_scipy(peer_input, config)
     elif method_id == "pyihw":
         result = _fit_pyihw(peer_input, config)
     elif method_id == "r_ihw":
@@ -457,7 +414,6 @@ def main(argv: Sequence[str] | None = None) -> int:
         alpha=args.alpha,
         nbins=args.nbins,
         nfolds=args.nfolds,
-        lambda_policy=args.lambda_policy,
         adjustment_type=args.adjustment_type,
         seed=args.seed,
     )
@@ -497,22 +453,18 @@ def _fit_production(peer_input: PeerInput, config: RunConfig) -> FitResult:
     return _from_ihw_result(result, config.alpha, _version("ihwkit"))
 
 
-def _fit_legacy(
-    peer_input: PeerInput, config: RunConfig, *, backend: Literal["numpy", "highs"]
-) -> FitResult:
-    if backend == "highs" and not _importable("scipy"):
+def _fit_scipy(peer_input: PeerInput, config: RunConfig) -> FitResult:
+    if not _importable("scipy"):
         raise PeerUnavailable("scipy is not installed")
     from tools import peer_legacy
 
     kwargs = _ihw_kwargs(peer_input, config)
-    kwargs["lp_backend"] = backend
-    kwargs["use_numba"] = False
     result = peer_legacy.adjust_ihw(
         peer_input.pvalues,
         peer_input.covariates,
         **kwargs,
     )
-    version = f"{peer_legacy.__version__}+{backend}"
+    version = f"{peer_legacy.__version__}+scipy-highs"
     return _from_ihw_result(result, config.alpha, version)
 
 
@@ -527,18 +479,13 @@ def _fit_pyihw(peer_input: PeerInput, config: RunConfig) -> FitResult:
     import pyihw
 
     nfolds = 5 if config.nfolds is None else config.nfolds
-    lambdas: str | FloatArray
-    if config.lambda_policy == "auto":
-        lambdas = "auto"
-    else:
-        lambdas = np.array([np.inf], dtype=np.float64)
     result = pyihw.ihw(
         peer_input.pvalues,
         peer_input.covariates,
         config.alpha,
         nbins=config.nbins,
         nfolds=nfolds,
-        lambdas=lambdas,
+        lambdas=np.array([np.inf], dtype=np.float64),
         adjustment_type=config.adjustment_type,
         folds=peer_input.folds,
         rng=np.random.default_rng(config.seed),
@@ -551,7 +498,7 @@ def _fit_r(peer_input: PeerInput, config: RunConfig) -> FitResult:
 
 
 def generate_r_reference(peer_input: PeerInput, config: RunConfig) -> RReferenceResult:
-    """Run R IHW once and return everything required for immutable replay.
+    """Run R IHW once and return everything required for fixed replay.
 
     This is the deliberate reference-generation path. Routine correctness,
     parity, validity, robustness, and performance commands do not call it.
@@ -593,8 +540,6 @@ def generate_r_reference(peer_input: PeerInput, config: RunConfig) -> RReference
             str(nbins),
             "--nfolds",
             str(nfolds),
-            "--lambda-policy",
-            config.lambda_policy,
             "--seed",
             str(config.seed),
             "--output-prefix",
@@ -628,7 +573,6 @@ def generate_r_reference(peer_input: PeerInput, config: RunConfig) -> RReference
         folds = np.asarray(
             _read_vector(output_prefix.with_suffix(".folds.txt")), dtype=np.intp
         )
-        fold_lambdas = _read_vector(output_prefix.with_suffix(".lambdas.txt"))
     if not version:
         raise RuntimeError("R IHW comparison did not report its package version")
     fit_result = FitResult(adjusted, weights, rejection_count, version)
@@ -644,21 +588,9 @@ def generate_r_reference(peer_input: PeerInput, config: RunConfig) -> RReference
             covariates=peer_input.covariates,
             groups=groups,
             folds=folds,
-            fold_lambdas=fold_lambdas,
         )
     )
-    effective_nfolds = _r_output_fold_count(nbins, nfolds)
-    if fold_lambdas.shape != (effective_nfolds,):
-        raise RuntimeError(f"R fold lambdas must have shape ({effective_nfolds},)")
-    if np.any(np.isnan(fold_lambdas)) or np.any(fold_lambdas < 0.0):
-        raise RuntimeError("R fold lambdas must be nonnegative and not NaN")
-    return RReferenceResult(fit_result, groups, folds, fold_lambdas)
-
-
-def _r_output_fold_count(nbins: int, requested_nfolds: int) -> int:
-    """Return R IHW's effective fold count for its one-bin BH shortcut."""
-
-    return 1 if nbins == 1 else requested_nfolds
+    return RReferenceResult(fit_result, groups, folds)
 
 
 def _ihw_kwargs(peer_input: PeerInput, config: RunConfig) -> dict[str, object]:
@@ -672,7 +604,6 @@ def _ihw_kwargs(peer_input: PeerInput, config: RunConfig) -> dict[str, object]:
         "alpha": config.alpha,
         "nbins": config.nbins,
         "nfolds": nfolds,
-        "lambdas": None if config.lambda_policy == "inf" else "auto",
         "adjustment_type": config.adjustment_type,
         "seed": config.seed,
     }
@@ -680,8 +611,6 @@ def _ihw_kwargs(peer_input: PeerInput, config: RunConfig) -> dict[str, object]:
         kwargs["groups"] = peer_input.groups
     if peer_input.folds is not None:
         kwargs["folds"] = peer_input.folds
-    if peer_input.fold_lambdas is not None:
-        kwargs["fold_lambdas"] = peer_input.fold_lambdas
     return kwargs
 
 
@@ -754,7 +683,6 @@ def _validate_reference_metadata(
         "alpha": spec.alpha,
         "nbins": spec.nbins,
         "nfolds": spec.nfolds,
-        "lambda_policy": spec.lambda_policy,
         "seed": spec.seed,
     }
     for key, value in expected.items():
@@ -816,17 +744,6 @@ def _archive_scalar(
     return target(value.item())
 
 
-def _reference_lambdas(
-    archive: np.lib.npyio.NpzFile, prefix: str, nfolds: int
-) -> FloatArray:
-    value = np.asarray(archive[prefix + "fold_lambdas"], dtype=np.float64)
-    if value.ndim != 1 or value.shape != (nfolds,):
-        raise PeerDataError(f"fold_lambdas must have shape ({nfolds},)")
-    if np.any(np.isnan(value)) or np.any(value < 0.0):
-        raise PeerDataError("fold_lambdas must be nonnegative and not NaN")
-    return value.copy()
-
-
 @cache
 def _version(package: str) -> str:
     try:
@@ -852,7 +769,6 @@ def _argument_parser() -> argparse.ArgumentParser:
     parser.add_argument("--alpha", type=float, default=0.1)
     parser.add_argument("--nbins", type=_parse_nbins, default="auto")
     parser.add_argument("--nfolds", type=int)
-    parser.add_argument("--lambda-policy", choices=("inf", "auto"), default="inf")
     parser.add_argument("--adjustment-type", choices=("bh", "bonferroni"), default="bh")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--include-arrays", action="store_true")

@@ -1,4 +1,4 @@
-"""Replay immutable R references through the changing production method."""
+"""Replay fixed R references through the changing production method."""
 
 from __future__ import annotations
 
@@ -50,7 +50,6 @@ class StressRow:
     n: int
     seed: int
     nfolds: int
-    lambda_policy: str
     status: str
     rejections: int | None
     false_rejections: int | None
@@ -81,8 +80,6 @@ def replay_case(reference_id: str) -> ReplayRow:
         "folds": peer_input.folds,
         "seed": peer_input.seed if peer_input.seed is not None else 1,
     }
-    if peer_input.fold_lambdas is not None:
-        replay_kwargs["fold_lambdas"] = peer_input.fold_lambdas
     r_adj = record.adjusted_pvalues
     r_weights = record.weights
     r_rejections = record.r_rejections
@@ -154,12 +151,11 @@ def run_known_stress_case() -> StressRow:
         )
     except Exception as exc:  # noqa: BLE001 - a failed fit is benchmark evidence
         return StressRow(
-            case_id="mixture_mild_n3000_seed2034_inf_n5",
+            case_id="mixture_mild_n3000_seed2034_n5",
             scenario_id=scenario_id,
             n=n,
             seed=seed,
             nfolds=5,
-            lambda_policy="inf",
             status="error",
             rejections=None,
             false_rejections=None,
@@ -171,12 +167,11 @@ def run_known_stress_case() -> StressRow:
     rejections = int(np.sum(rejected))
     false_rejections = int(np.sum(rejected & draw.is_null))
     return StressRow(
-        case_id="mixture_mild_n3000_seed2034_inf_n5",
+        case_id="mixture_mild_n3000_seed2034_n5",
         scenario_id=scenario_id,
         n=n,
         seed=seed,
         nfolds=5,
-        lambda_policy="inf",
         status="ok",
         rejections=rejections,
         false_rejections=false_rejections,
@@ -196,7 +191,7 @@ def _write_markdown(
     lines = [
         "# IHW fixed-reference replay",
         "",
-        "The stored R groups, folds, and fold lambdas are replayed through the current Python implementation. BH@R independently checks weighted BH using the stored R weights. Synthetic lambda-infinity rows are release gates; the other rows are visible diagnostics.",
+        "The stored R groups and folds are replayed through the current Python implementation. BH@R independently checks weighted BH using the stored R weights. Synthetic rows are release gates; airway rows are visible real-shape diagnostics.",
         "",
         "| reference | data | gate | R rej | production rej | delta | max abs w | production | BH@R |",
         "|---|---|:---:|---:|---:|---:|---:|:---:|:---:|",

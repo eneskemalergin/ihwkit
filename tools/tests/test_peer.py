@@ -12,14 +12,11 @@ from pathlib import Path
 import numpy as np
 
 from ihw import IHWResult, _p_adjust, _safe_divide, adjust_ihw
-from tools import peer_legacy
 from tools.peer import (
+    METHODS,
     PARITY_GATE_IDS,
     REFERENCE_IDS,
     ReferenceRecord,
-    RunConfig,
-    _r_output_fold_count,
-    fit,
     load_peer_input,
     load_reference,
 )
@@ -62,7 +59,6 @@ def test_frozen_r_records_are_self_contained() -> None:
         assert peer_input.size == expected_size
         assert peer_input.groups is not None
         assert peer_input.folds is not None
-        assert peer_input.fold_lambdas is not None
         assert record.metadata["reference_id"] == reference_id
         assert record.metadata["r_ihw_version"] == "1.40.0"
         assert np.all(np.isfinite(record.adjusted_pvalues))
@@ -95,53 +91,16 @@ def test_production_fit_on_generated_input() -> None:
     assert np.all(np.isfinite(result.adj_pvalues))
 
 
-def test_numpy_reference_finite_lp_uses_correct_vectorized_pivots() -> None:
-    """The NumPy-only finite-lambda solver retains the LP optimum."""
+def test_scipy_peer_emits_normalized_arrays_when_available(tmp_path: Path) -> None:
+    """The unified command exposes only the retained solver baseline."""
 
-    objective = np.array([3.0, 4.0])
-    constraints = np.array([[1.0, 2.0], [3.0, 1.0]])
-    bounds = np.array([8.0, 9.0])
-    solution = peer_legacy._solve_lp_numpy(
-        objective,
-        constraints,
-        bounds,
-        np.zeros(2),
-        np.full(2, np.inf),
-        use_numba=False,
-    )
-
-    np.testing.assert_allclose(solution, np.array([2.0, 3.0]), atol=1e-8)
-
-
-def test_auto_lambda_on_generated_input_is_finite() -> None:
-    """The auto-lambda path remains finite on the larger generated input."""
-
-    peer_input = load_peer_input("sim_5000_seed42")
-    result = adjust_ihw(
-        peer_input.pvalues,
-        peer_input.covariates,
-        0.1,
-        nbins="auto",
-        nfolds=5,
-        lambdas="auto",
-        seed=42,
-    )
-    assert result.nbins == 3
-    assert result.nfolds == 5
-    assert np.all(np.isfinite(result.weights))
-    assert np.all(np.isfinite(result.adj_pvalues))
-
-
-def test_numpy_peer_emits_normalized_arrays(tmp_path: Path) -> None:
-    """The unified command emits arrays for the pinned NumPy baseline."""
-
-    result_path = tmp_path / "numpy.json"
+    result_path = tmp_path / "scipy.json"
     completed = subprocess.run(
         [
             sys.executable,
             str(ROOT / "tools" / "peer.py"),
             "--method",
-            "ihwkit_numpy",
+            "ihwkit_scipy",
             "--dataset",
             "sim_500_seed42",
             "--nbins",
@@ -158,20 +117,21 @@ def test_numpy_peer_emits_normalized_arrays(tmp_path: Path) -> None:
         text=True,
         check=False,
     )
-    assert completed.returncode == 0, completed.stderr
     document = json.loads(result_path.read_text(encoding="utf-8"))
-    assert document["status"] == "ok"
-    assert document["method_id"] == "ihwkit_numpy"
-    assert 0 <= document["rejection_count"] <= 500
-    assert len(document["adjusted_pvalues"]) == 500
-    assert len(document["weights"]) == 500
+    assert document["method_id"] == "ihwkit_scipy"
+    if importlib.util.find_spec("scipy") is None:
+        assert completed.returncode == 3
+        assert document["status"] == "unavailable"
+    else:
+        assert completed.returncode == 0, completed.stderr
+        assert document["status"] == "ok"
+        assert 0 <= document["rejection_count"] <= 500
+        assert len(document["adjusted_pvalues"]) == 500
+        assert len(document["weights"]) == 500
 
 
-def test_r_one_bin_shortcut_reports_one_effective_fold() -> None:
-    """R IHW reduces a requested cross-fit to one fold when only one bin exists."""
-
-    assert _r_output_fold_count(1, 5) == 1
-    assert _r_output_fold_count(3, 5) == 5
+def test_benchmark_methods_are_distinct_implementations() -> None:
+    assert METHODS == ("ihwkit", "ihwkit_scipy", "pyihw", "r_ihw")
 
 
 def test_unsupported_pyihw_is_not_reported_as_success(tmp_path: Path) -> None:
@@ -250,30 +210,6 @@ def test_unregularized_production_matches_frozen_airway_vectors() -> None:
         )
 
 
-def test_unregularized_numpy_reference_matches_frozen_r_vectors() -> None:
-    """The NumPy-only direct path retains fixed-vector parity."""
-
-    record = load_reference("sim_5000_inf_n5")
-    result = fit(
-        "ihwkit_numpy",
-        record.peer_input,
-        RunConfig(alpha=0.1, nbins=3, nfolds=5, lambda_policy="inf", seed=42),
-    )
-    np.testing.assert_allclose(
-        result.adjusted_pvalues,
-        record.adjusted_pvalues,
-        atol=1e-8,
-        rtol=1e-6,
-    )
-    assert result.weights is not None
-    np.testing.assert_allclose(
-        result.weights,
-        record.weights,
-        atol=1e-8,
-        rtol=1e-6,
-    )
-
-
 def test_known_default_false_infeasibility_is_resolved() -> None:
     """The seed-2034 feasible default fit remains a regression case."""
 
@@ -311,7 +247,6 @@ def _fit_reference(record: ReferenceRecord) -> IHWResult:
     peer_input = record.peer_input
     assert peer_input.groups is not None
     assert peer_input.folds is not None
-    assert peer_input.fold_lambdas is not None
     return adjust_ihw(
         peer_input.pvalues,
         peer_input.covariates,
@@ -320,6 +255,5 @@ def _fit_reference(record: ReferenceRecord) -> IHWResult:
         nfolds=int(np.max(peer_input.folds)) + 1,
         groups=peer_input.groups,
         folds=peer_input.folds,
-        fold_lambdas=peer_input.fold_lambdas,
         seed=peer_input.seed,
     )

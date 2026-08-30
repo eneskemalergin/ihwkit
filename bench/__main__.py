@@ -114,7 +114,7 @@ MATRIX: tuple[MatrixRow, ...] = (
         "correctness",
         "generated edge cases and synthetic draws",
         "Does the API validate inputs and return numerically valid results?",
-        "status, invariants, solver failure",
+        "status, validation, numerical invariants",
         "python -m bench correctness",
         "implemented",
     ),
@@ -124,7 +124,7 @@ MATRIX: tuple[MatrixRow, ...] = (
         "Does a fixed Python configuration agree with R IHW?",
         "full vectors, rejection count, declared tolerance",
         "python -m bench parity",
-        "synthetic lambda=inf gates plus broader diagnostics",
+        "synthetic release gates plus broader diagnostics",
     ),
     MatrixRow(
         "validity",
@@ -136,7 +136,7 @@ MATRIX: tuple[MatrixRow, ...] = (
     ),
     MatrixRow(
         "robustness",
-        "synthetic stress, finite-lambda, and airway shapes",
+        "synthetic stress and airway shapes",
         "Where do assumptions, conditioning, or implementation limits fail?",
         "fit status, parity residuals, and failure surface",
         "python -m bench robustness",
@@ -246,7 +246,7 @@ def _print_matrix() -> None:
 
 
 def _references_main(argv: Sequence[str]) -> int:
-    """List immutable R records or explicitly regenerate one local dataset."""
+    """List fixed R records or explicitly regenerate one local dataset."""
 
     dataset_ids = tuple(dict.fromkeys(spec.dataset_id for spec in REFERENCE_SPECS))
     parser = argparse.ArgumentParser(prog="python -m bench references")
@@ -254,9 +254,7 @@ def _references_main(argv: Sequence[str]) -> int:
     args = parser.parse_args(argv)
     if args.refresh is None:
         writer = csv.writer(sys.stdout, delimiter="\t", lineterminator="\n")
-        writer.writerow(
-            ("reference", "dataset", "gate", "nbins", "nfolds", "lambdas", "file")
-        )
+        writer.writerow(("reference", "dataset", "gate", "nbins", "nfolds", "file"))
         for spec in REFERENCE_SPECS:
             writer.writerow(
                 (
@@ -265,7 +263,6 @@ def _references_main(argv: Sequence[str]) -> int:
                     "yes" if spec.gate else "no",
                     spec.nbins,
                     spec.nfolds,
-                    spec.lambda_policy,
                     spec.relative_path,
                 )
             )
@@ -275,7 +272,7 @@ def _references_main(argv: Sequence[str]) -> int:
 
 
 def _refresh_references(dataset_id: str) -> None:
-    """Replace one data file with three outputs freshly computed by R IHW."""
+    """Replace one data file with fixed outputs freshly computed by R IHW."""
 
     specs = [spec for spec in REFERENCE_SPECS if spec.dataset_id == dataset_id]
     if not specs:
@@ -309,7 +306,6 @@ def _refresh_references(dataset_id: str) -> None:
                 alpha=spec.alpha,
                 nbins=spec.nbins,
                 nfolds=spec.nfolds,
-                lambda_policy=spec.lambda_policy,
                 adjustment_type="bh",
                 seed=spec.seed,
             ),
@@ -324,14 +320,12 @@ def _refresh_references(dataset_id: str) -> None:
             {
                 prefix + "groups": result.groups,
                 prefix + "folds": result.folds,
-                prefix + "fold_lambdas": result.fold_lambdas,
                 prefix + "adjusted_pvalues": result.fit.adjusted_pvalues,
                 prefix + "weights": result.fit.weights,
                 prefix + "rejections": np.asarray(result.fit.rejection_count),
                 prefix + "alpha": np.asarray(spec.alpha),
                 prefix + "nbins": np.asarray(spec.nbins),
                 prefix + "nfolds": np.asarray(spec.nfolds),
-                prefix + "lambda_policy": np.asarray(spec.lambda_policy),
                 prefix + "seed": np.asarray(spec.seed),
             }
         )
@@ -357,8 +351,6 @@ def _validity_main(argv: Sequence[str]) -> int:
         reps_override=args.reps,
     )
     methods = ["bh", "ihw_inf_cv"]
-    if args.include_auto:
-        methods.append("ihw_auto_cv")
     attempts = _run_validity(cases, methods, alpha=args.alpha)
     summaries = _summarize(attempts)
     result_dir = (ROOT / args.result_dir).resolve()
@@ -400,7 +392,6 @@ def _validity_arguments(argv: Sequence[str]) -> argparse.Namespace:
         choices=tuple(SCENARIO_BUILDERS),
         help="Run only this scenario; repeat the option to select several.",
     )
-    parser.add_argument("--include-auto", action="store_true")
     parser.add_argument("--name", default="validity")
     parser.add_argument("--result-dir", type=Path, default=Path("tmp/results"))
     args = parser.parse_args(argv)
@@ -542,15 +533,6 @@ def _run_method(
             nfolds=5,
             seed=seed,
         ).adj_pvalues
-    if method_id == "ihw_auto_cv":
-        return adjust_ihw(
-            draw.pvalues,
-            draw.covariates,
-            alpha,
-            nfolds=5,
-            lambdas="auto",
-            seed=seed,
-        ).adj_pvalues
     raise ValueError(f"unknown validity method: {method_id}")
 
 
@@ -670,7 +652,6 @@ def _write_report(
         f"Command: `{command.strip()}`",
         f"Python: {platform.python_version()}",
         f"NumPy: {np.__version__}",
-        f"Numba: {_package_version('numba')}",
         f"Imported implementation: `{Path(adjust_ihw.__code__.co_filename).resolve()}`",
         f"Nominal alpha: {alpha}",
         f"Study scale: {'quick smoke' if quick else 'development study'}",

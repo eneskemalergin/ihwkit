@@ -81,16 +81,16 @@ def test_generated_markdown_tables_are_human_aligned() -> None:
         "| method | time |",
         "|---|---:|",
         "| ihwkit | 2.0 ms |",
-        "| NumPy reference | 20.0 ms |",
+        "| SciPy/HiGHS | 20.0 ms |",
     ]
 
     formatted = _format_markdown_tables(lines)
 
     assert formatted == [
-        "| method          |    time |",
-        "| --------------- | ------: |",
-        "| ihwkit          |  2.0 ms |",
-        "| NumPy reference | 20.0 ms |",
+        "| method      |    time |",
+        "| ----------- | ------: |",
+        "| ihwkit      |  2.0 ms |",
+        "| SciPy/HiGHS | 20.0 ms |",
     ]
 
 

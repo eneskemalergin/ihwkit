@@ -50,7 +50,6 @@ covariates_path <- get_arg("--covariates")
 alpha_text <- get_arg("--alpha")
 nbins_text <- get_arg("--nbins")
 nfolds_text <- get_arg("--nfolds")
-lambda_policy <- get_arg("--lambda-policy")
 seed_text <- get_arg("--seed")
 output_prefix <- get_arg("--output-prefix")
 
@@ -60,7 +59,6 @@ required <- list(
   alpha = alpha_text,
   nbins = nbins_text,
   nfolds = nfolds_text,
-  lambda_policy = lambda_policy,
   seed = seed_text,
   output_prefix = output_prefix
 )
@@ -78,7 +76,6 @@ if (length(pvalues) == 0L || length(pvalues) != length(covariates)) {
   fail("R IHW adapter received invalid input lengths", 1L)
 }
 
-lambda_value <- if (identical(lambda_policy, "auto")) "auto" else Inf
 set.seed(as.integer(seed_text))
 fit <- tryCatch(
   IHW::ihw(
@@ -87,7 +84,7 @@ fit <- tryCatch(
     alpha = as.numeric(alpha_text),
     nbins = as.integer(nbins_text),
     nfolds = as.integer(nfolds_text),
-    lambdas = lambda_value,
+    lambdas = Inf,
     seed = as.integer(seed_text)
   ),
   error = function(error) {
@@ -101,7 +98,6 @@ rejections <- sum(adjusted <= as.numeric(alpha_text), na.rm = TRUE)
 fit_frame <- methods::slot(fit, "df")
 groups <- as.integer(fit_frame$group) - 1L
 folds <- as.integer(fit_frame$fold) - 1L
-fold_lambdas <- as.numeric(IHW::regularization_term(fit))
 write.table(
   adjusted,
   file = paste0(output_prefix, ".adj.txt"),
@@ -134,13 +130,6 @@ write.table(
 write.table(
   folds,
   file = paste0(output_prefix, ".folds.txt"),
-  row.names = FALSE,
-  col.names = FALSE,
-  quote = FALSE
-)
-write.table(
-  fold_lambdas,
-  file = paste0(output_prefix, ".lambdas.txt"),
   row.names = FALSE,
   col.names = FALSE,
   quote = FALSE
