@@ -456,15 +456,15 @@ def _fit_production(peer_input: PeerInput, config: RunConfig) -> FitResult:
 def _fit_scipy(peer_input: PeerInput, config: RunConfig) -> FitResult:
     if not _importable("scipy"):
         raise PeerUnavailable("scipy is not installed")
-    from tools import peer_legacy
+    from tools import peer_scipy
 
     kwargs = _ihw_kwargs(peer_input, config)
-    result = peer_legacy.adjust_ihw(
+    result = peer_scipy.adjust_ihw(
         peer_input.pvalues,
         peer_input.covariates,
         **kwargs,
     )
-    version = f"{peer_legacy.__version__}+scipy-highs"
+    version = f"{peer_scipy.__version__}+scipy-highs"
     return _from_ihw_result(result, config.alpha, version)
 
 

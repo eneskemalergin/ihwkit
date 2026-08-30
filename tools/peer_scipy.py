@@ -1,4 +1,4 @@
-"""Retained SciPy/HiGHS baseline for benchmark comparisons.
+"""Run the retained SciPy/HiGHS baseline for benchmark comparisons.
 
 This is deliberately not a second ihwkit implementation. It preserves the
 older dense linear-program route so the benchmark can compare the optimized
