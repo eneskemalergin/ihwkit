@@ -8,14 +8,15 @@
 
 <p align="center">
   <a href="#install"><img src="https://img.shields.io/badge/python-3.12%2B-3776AB?style=flat-square&amp;logo=python&amp;logoColor=white" alt="Python 3.12+"></a>
-  <img src="https://img.shields.io/badge/version-0.1.0-8B5CF6?style=flat-square" alt="Version 0.1.0">
+  <a href="CHANGELOG.md#010---2026-08-29"><img src="https://img.shields.io/badge/version-0.1.0-8B5CF6?style=flat-square" alt="Version 0.1.0"></a>
   <img src="https://img.shields.io/badge/runtime-NumPy%20only-4D77CF?style=flat-square&amp;logo=numpy&amp;logoColor=white" alt="NumPy-only runtime">
+  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/changelog-release%20notes-7C3AED?style=flat-square" alt="Changelog"></a>
   <a href="bench/REPORT.md"><img src="https://img.shields.io/badge/benchmark-report-C17D10?style=flat-square" alt="Benchmark report"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-4B9D6E?style=flat-square" alt="MIT License"></a>
 </p>
 
 <p align="center">
-  Cross-weighted multiple testing without a solver, JIT, backend selector, or hidden fallback.
+  Cross-weighted multiple testing through one NumPy implementation, with no generic optimization solver or JIT dependency.
 </p>
 
 ---
@@ -29,15 +30,17 @@ Version 0.1 keeps the production scope deliberately narrow:
 - Benjamini-Hochberg or Bonferroni adjustment.
 - Ordinal covariates with automatic equal-frequency grouping and support for nominal covariates.
 - Frozen groups and folds for direct replay, plus full-family group counts for filtered analyses.
-- One NumPy implementation with no alternate production backend or automatic solver fallback.
+- One installed NumPy implementation rather than a backend selector.
 
-Finite regularization is not a hidden option in 0.1. It remains future work that needs its own statistical, numerical, and performance acceptance criteria.
+Finite regularization is outside the 0.1 scope. Adding it requires separate statistical, numerical, and performance acceptance criteria.
 
 ## Install
 
-From a source checkout:
+A PyPI release is planned after the next small set of additions passes the source, wheel, clean-install, and supported-Python checks. Until then, install from the GitHub source:
 
 ```bash
+git clone https://github.com/eneskemalergin/ihwkit.git
+cd ihwkit
 python -m pip install .
 ```
 
@@ -71,7 +74,7 @@ The result also contains weighted p-values, group and fold assignments, the requ
 
 `nbins="auto"` selects `max(1, min(40, n // 1500))`. Set it explicitly for a small example that needs more than one group. `exploratory=True` learns and applies weights on one fold for inspection; it is not the confirmatory default. Frozen `groups` and `folds` support direct replay, while `m_groups` supports a filtered subset whose full family counts are known.
 
-Nominal covariates and Bonferroni adjustment are implemented and covered by structural tests. The current parity and full simulation evidence is much broader for ordinal covariates with BH, so the benchmark report does not imply equal validation for every accepted option.
+Benchmark evidence is centered on ordinal covariates with BH. Nominal covariates and Bonferroni adjustment have structural coverage, but should not be read as equally validated.
 
 ## Statistical boundary
 
@@ -79,7 +82,7 @@ IHW needs a covariate that is informative about power while satisfying the requi
 
 The learned weights depend on the requested `alpha`. Consequently, `adj_pvalues` answer the decision problem for that fitted alpha; one fit should not be presented as an alpha-free q-value curve.
 
-The current simulation study covers named independent-null and mixture scenarios. It does not prove universal FDR control, and it does not yet cover arbitrary dependence, discrete p-values, or every filtered-family design. Limits, failed fits, and unavailable peers remain visible in the benchmark report.
+The current simulation study covers named independent-null and mixture scenarios. It does not prove universal FDR control, and it does not cover arbitrary dependence, discrete p-values, or filtered-family designs beyond structural checks. Limits, failed fits, and unavailable peers remain visible in the benchmark report.
 
 ## Public evidence
 
@@ -99,13 +102,24 @@ The current simulation study covers named independent-null and mixture scenarios
 The current recorded study shows:
 
 - Fixed synthetic R replays pass the declared full-vector parity tolerance.
-- None of the six named FDR intervals lies wholly above the nominal 0.10 level.
+- Across the six named Monte Carlo screens, no 95% FDR interval lies wholly above the nominal 0.10 level.
 - Three of four paired power intervals favor ihwkit over BH; the dense-covariate scenario shows a real power loss rather than being hidden by an overall score.
 - ihwkit ranks first for warmed fit time, complete-process time, and peak RSS at the reported 5,000- and 50,000-hypothesis scales.
 
 These are results for the recorded scenarios, host, versions, and scales, not universal guarantees. The report compares ihwkit with a distinct SciPy/HiGHS implementation, pyihw 0.2.0, R IHW 1.40.0, and unweighted BH where each comparison is meaningful.
 
-From a repository checkout, `python -m bench` lists every evidence track. The NumPy-only checks are directly runnable:
+<p align="center">
+  <a href="bench/REPORT.md#absolute-compute-cost">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="bench/figures/02-process-cost-dark.svg">
+      <source media="(prefers-color-scheme: light)" srcset="bench/figures/02-process-cost-light.svg">
+      <img src="bench/figures/02-process-cost-light.svg" alt="Absolute warmed-fit time, complete-process time, and peak RSS across the current ihwkit scaling study" width="100%">
+    </picture>
+  </a>
+</p>
+<p align="center"><sub>Absolute machine-local warmed-fit time, complete-process time, and peak RSS. Lower is better; open the report for measurements, dispersion, versions, and scope.</sub></p>
+
+From a repository checkout, `python -m bench matrix` lists every evidence track. The NumPy-only checks are directly runnable:
 
 ```bash
 python -m bench correctness
@@ -115,6 +129,14 @@ python -m bench validity --quick
 ```
 
 Fixed-reference benchmarks use the two self-contained records in [`bench/data/`](bench/data/README.md); they do not download data or rerun R. The full report documents optional peers, complete-process measurement with zebrac, the retained timing environment, and explicit reference refreshes.
+
+## Coming next
+
+Near-term work, subject to the same evidence gates:
+
+- Broader validation for dependence, discrete p-values, nominal covariates, and filtered families.
+- More real omics benchmark shapes, beginning with proteomic, genomic, and donor-level single-cell cases.
+- Table-first diagnostics, plus a measured Rust core and Python-binding experiment.
 
 ## Development
 

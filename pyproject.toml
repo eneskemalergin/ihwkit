@@ -23,6 +23,7 @@ dependencies = [
 [project.urls]
 Source = "https://github.com/eneskemalergin/ihwkit"
 Issues = "https://github.com/eneskemalergin/ihwkit/issues"
+Changelog = "https://github.com/eneskemalergin/ihwkit/blob/main/CHANGELOG.md"
 Benchmarks = "https://github.com/eneskemalergin/ihwkit/blob/main/bench/REPORT.md"
 
 [tool.hatch.build.targets.wheel.force-include]
