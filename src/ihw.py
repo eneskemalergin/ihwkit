@@ -444,9 +444,10 @@ def adjust_ihw(
     adjustment_type : {"bh", "bonferroni"}, optional
         Multiple-testing adjustment used by the weight optimization.
     folds, groups, m_groups : array-like or None, optional
-        Optional frozen partitions or full-family group counts. ``m_groups``
-        may exceed the observed counts when fitting a filtered subset, but may
-        never be smaller.
+        Optional frozen partitions or full-family group counts. One-bin fits
+        do not cross-weight, but still return any supplied fold labels.
+        ``m_groups`` may exceed the observed counts when fitting a filtered
+        subset, but may never be smaller.
     rng : numpy.random.Generator or None, optional
         Generator used for fold assignment.
     seed : int or None, optional
@@ -470,7 +471,7 @@ def adjust_ihw(
     weights depend on that level; do not interpret one fit as an alpha-free
     q-value curve.
     """
-    p = np.asarray(pvalues, dtype=np.float64)
+    p = np.array(pvalues, dtype=np.float64, copy=True)
     x = np.asarray(covariates, dtype=np.float64)
     if p.ndim != 1:
         raise IHWValidationError("pvalues must be a 1-d array")
@@ -545,7 +546,9 @@ def adjust_ihw(
         if not exploratory:
             eff_nfolds = nfolds_f
         elif nfolds_f != 1:
-            raise IHWValidationError("folds labels must be in 0 .. nfolds-1 with no gaps")
+            raise IHWValidationError(
+                "exploratory fits accept only a single fold label"
+            )
     pad_method = "fdr_bh" if adjustment_type == "bh" else "bonferroni"
     if nbins_i == 1:
         order = np.argsort(p)
@@ -556,7 +559,11 @@ def adjust_ihw(
             weights=np.ones(n, dtype=np.float64),
             weighted_pvalues=p.copy(),
             groups=group_id,
-            folds=np.zeros(n, dtype=np.intp),
+            folds=(
+                validated_folds
+                if validated_folds is not None
+                else np.zeros(n, dtype=np.intp)
+            ),
             alpha=alpha,
             nbins=1,
             nfolds=1,

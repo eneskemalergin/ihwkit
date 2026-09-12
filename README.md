@@ -3,20 +3,21 @@
 <h1 align="center">ihwkit</h1>
 
 <p align="center">
-  <strong>Independent Hypothesis Weighting with a small, NumPy-only runtime.</strong>
+  Independent Hypothesis Weighting with a small, NumPy-only runtime.
 </p>
 
 <p align="center">
-  <a href="#install"><img src="https://img.shields.io/badge/python-3.12%2B-3776AB?style=flat-square&amp;logo=python&amp;logoColor=white" alt="Python 3.12+"></a>
-  <a href="CHANGELOG.md#010---2026-08-29"><img src="https://img.shields.io/badge/version-0.1.0-8B5CF6?style=flat-square" alt="Version 0.1.0"></a>
-  <img src="https://img.shields.io/badge/runtime-NumPy%20only-4D77CF?style=flat-square&amp;logo=numpy&amp;logoColor=white" alt="NumPy-only runtime">
-  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/changelog-release%20notes-7C3AED?style=flat-square" alt="Changelog"></a>
+  <img src="https://img.shields.io/badge/python-3.12--3.14-3776AB?style=flat-square&amp;logo=python&amp;logoColor=white" alt="Python 3.12-3.14">
+  <img src="https://img.shields.io/badge/version-0.1.1-8B5CF6?style=flat-square" alt="v0.1.1">
+  <img src="https://img.shields.io/badge/runtime-NumPy%202.5%2B-4D77CF?style=flat-square&amp;logo=numpy&amp;logoColor=white" alt="NumPy 2.5+">
+  <a href="https://github.com/eneskemalergin/ihwkit/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/eneskemalergin/ihwkit/ci.yml?branch=main&amp;style=flat-square&amp;logo=github&amp;label=CI" alt="CI"></a>
+  <img src="https://img.shields.io/badge/license-MIT-4B9D6E?style=flat-square" alt="MIT">
+</p>
+
+<p align="center">
+  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/changelog-CHANGELOG-E05D44?style=flat-square" alt="Changelog"></a>
+  <a href="CITATION.cff"><img src="https://img.shields.io/badge/cite-CITATION.cff-0066CC?style=flat-square" alt="Citation"></a>
   <a href="bench/REPORT.md"><img src="https://img.shields.io/badge/benchmark-report-C17D10?style=flat-square" alt="Benchmark report"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-4B9D6E?style=flat-square" alt="MIT License"></a>
-</p>
-
-<p align="center">
-  Cross-weighted multiple testing through one NumPy implementation, with no generic optimization solver or JIT dependency.
 </p>
 
 ---
@@ -36,7 +37,7 @@ Finite regularization is outside the 0.1 scope. Adding it requires separate stat
 
 ## Install
 
-A PyPI release is planned after the next small set of additions passes the source, wheel, clean-install, and supported-Python checks. Until then, install from the GitHub source:
+ihwkit supports CPython 3.12, 3.13, and 3.14 with NumPy 2.5 or newer. It is not on PyPI yet. Install from GitHub:
 
 ```bash
 git clone https://github.com/eneskemalergin/ihwkit.git
@@ -72,7 +73,7 @@ discoveries
 
 The result also contains weighted p-values, group and fold assignments, the requested alpha, effective bin and fold counts, covariate and adjustment types, and full-family group counts.
 
-`nbins="auto"` selects `max(1, min(40, n // 1500))`. Set it explicitly for a small example that needs more than one group. `exploratory=True` learns and applies weights on one fold for inspection; it is not the confirmatory default. Frozen `groups` and `folds` support direct replay, while `m_groups` supports a filtered subset whose full family counts are known.
+`nbins="auto"` selects `max(1, min(40, n // 1500))`. Set it explicitly for a small example that needs more than one group. `exploratory=True` learns and applies weights on one fold for inspection; it is not the confirmatory default. Frozen `groups` and `folds` support direct replay, while `m_groups` supports a filtered subset whose full family counts are known. A one-bin fit does not cross-weight, but still returns any supplied fold labels.
 
 Benchmark evidence is centered on ordinal covariates with BH. Nominal covariates and Bonferroni adjustment have structural coverage, but should not be read as equally validated.
 
@@ -106,7 +107,7 @@ The current recorded study shows:
 - Three of four paired power intervals favor ihwkit over BH; the dense-covariate scenario shows a real power loss rather than being hidden by an overall score.
 - ihwkit ranks first for warmed fit time, complete-process time, and peak RSS at the reported 5,000- and 50,000-hypothesis scales.
 
-These are results for the recorded scenarios, host, versions, and scales, not universal guarantees. The report compares ihwkit with a distinct SciPy/HiGHS implementation, pyihw 0.2.0, R IHW 1.40.0, and unweighted BH where each comparison is meaningful.
+These are results for the recorded scenarios, host, versions, and scales, not universal guarantees. The report compares ihwkit with a distinct SciPy/HiGHS implementation, optional pyihw 0.2.0, R IHW 1.40.0, and unweighted BH where each comparison is meaningful. pyihw 0.2.0 needs Python 3.13 or newer; that does not raise ihwkit's 3.12 floor.
 
 <p align="center">
   <a href="bench/REPORT.md#absolute-compute-cost">
@@ -132,7 +133,7 @@ Fixed-reference benchmarks use the two self-contained records in [`bench/data/`]
 
 ## Coming next
 
-Near-term work, subject to the same evidence gates:
+Near-term work, subject to the same evidence checks:
 
 - Broader validation for dependence, discrete p-values, nominal covariates, and filtered families.
 - More real omics benchmark shapes, beginning with proteomic, genomic, and donor-level single-cell cases.
@@ -140,19 +141,72 @@ Near-term work, subject to the same evidence gates:
 
 ## Development
 
-Run the package tests with:
+Local work uses one CPython. The repository suite is:
 
 ```bash
-uv run --no-project --with pytest --with numpy pytest -q tests
+uv run --no-project --with pytest --with 'numpy>=2.5' pytest -q
 ```
 
-Run the complete repository gate with:
-
-```bash
-uv run --no-project --with pytest --with numpy --with scipy pytest -q
-```
+That command covers `tests/` and `tools/tests`. SciPy is optional; without it, SciPy peer checks report unavailable and the suite still passes. Pull requests target `dev`.
 
 The installed product is `src/ihw.py`. Package tests live in `tests/`; `bench/` owns the public evidence and fixed records; `tools/` owns simulations and peer adapters. These repository-only files do not enter the wheel.
+
+## Citation
+
+If you use ihwkit, cite the original IHW method and this software. Cite Ignatiadis and Huber (2021) when you discuss theoretical properties of cross-weighting. Cite the Bioconductor IHW R package when you use or compare against that implementation.
+
+ihwkit 0.1 is a NumPy reimplementation of five-fold cross-weighting and the unregularized (infinite-lambda) allocation. It is not a substitute for the full R package, which still provides regularization, nested lambda selection, and plotting. The uncensored path used here is the 2021 asymptotic IHW-BH procedure, not the tau-censored finite-sample construction.
+
+> Ignatiadis, N., Klaus, B., Zaugg, J.B., and Huber, W. (2016). *Data-driven hypothesis weighting increases detection power in genome-scale multiple testing.* Nature Methods 13, 577-580. <https://doi.org/10.1038/nmeth.3885>
+
+> Ignatiadis, N. and Huber, W. (2021). *Covariate powered cross-weighted multiple testing.* Journal of the Royal Statistical Society Series B 83, 720-751. <https://doi.org/10.1111/rssb.12411>
+
+> Ignatiadis, N., Klaus, B., Zaugg, J.B., and Huber, W. (2026). *IHW: Independent Hypothesis Weighting.* R package version 1.40.0. <https://bioconductor.org/packages/IHW>. Source: <https://github.com/nignatiadis/IHW>. Frozen reference records in this repository were generated with IHW 1.40.0.
+
+```bibtex
+@article{ignatiadis2016ihw,
+  author  = {Ignatiadis, Nikolaos and Klaus, Bernd and Zaugg, Judith B. and Huber, Wolfgang},
+  title   = {Data-driven hypothesis weighting increases detection power
+             in genome-scale multiple testing},
+  journal = {Nature Methods},
+  year    = {2016},
+  volume  = {13},
+  number  = {7},
+  pages   = {577--580},
+  doi     = {10.1038/nmeth.3885},
+}
+
+@article{ignatiadis2021crossweighting,
+  author  = {Ignatiadis, Nikolaos and Huber, Wolfgang},
+  title   = {Covariate powered cross-weighted multiple testing},
+  journal = {Journal of the Royal Statistical Society Series B:
+             Statistical Methodology},
+  year    = {2021},
+  volume  = {83},
+  number  = {4},
+  pages   = {720--751},
+  doi     = {10.1111/rssb.12411},
+}
+
+@manual{ignatiadis2026ihw_r,
+  author  = {Ignatiadis, Nikolaos and Klaus, Bernd and Zaugg, Judith B. and Huber, Wolfgang},
+  title   = {{IHW}: Independent Hypothesis Weighting},
+  year    = {2026},
+  note    = {R package version 1.40.0},
+  url     = {https://bioconductor.org/packages/IHW},
+}
+
+@software{ergin_ihwkit_2026,
+  author  = {Ergin, Enes Kemal},
+  title   = {ihwkit: Independent Hypothesis Weighting with {NumPy}},
+  year    = {2026},
+  version = {0.1.1},
+  url     = {https://github.com/eneskemalergin/ihwkit},
+  license = {MIT},
+}
+```
+
+`CITATION.cff` is in the repository root.
 
 ## License
 

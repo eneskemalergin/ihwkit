@@ -52,6 +52,20 @@ def test_pvalue_above_one_raises() -> None:
     with pytest.raises(ValueError, match=r"\[0, 1\]"):
         adjust_ihw(np.array([0.1, 1.5]), np.array([1.0, 2.0]), 0.1)
 
+def test_alpha_outside_open_unit_interval_raises() -> None:
+    """Alpha must be strictly between 0 and 1."""
+
+    with pytest.raises(IHWValidationError, match=r"\(0, 1\)"):
+        adjust_ihw(_P, _X, 0.0)
+    with pytest.raises(IHWValidationError, match=r"\(0, 1\)"):
+        adjust_ihw(_P, _X, 1.0)
+    with pytest.raises(IHWValidationError, match=r"\(0, 1\)"):
+        adjust_ihw(_P, _X, -0.1)
+    with pytest.raises(IHWValidationError, match=r"\(0, 1\)"):
+        adjust_ihw(_P, _X, 1.1)
+    with pytest.raises(IHWValidationError, match=r"\(0, 1\)"):
+        adjust_ihw(_P, _X, float("nan"))
+
 def test_length_mismatch_raises() -> None:
     with pytest.raises(ValueError, match="Length mismatch"):
         adjust_ihw(_P, np.array([1.0, 2.0]), 0.1)
@@ -102,6 +116,11 @@ def test_covariate_not_1d_raises() -> None:
     with pytest.raises(ValueError, match="1-d"):
         adjust_ihw(_P, np.ones((4, 1)), 0.1)
 
+def test_groups_must_be_1d() -> None:
+    groups = np.array([0, 1, 2, 3], dtype=np.intp).reshape(4, 1)
+    with pytest.raises(IHWValidationError, match="1-d"):
+        adjust_ihw(_P, _X, 0.1, groups=groups)
+
 def test_folds_must_be_1d() -> None:
     rng = np.random.default_rng(0)
     p = rng.uniform(size=40)
@@ -137,6 +156,13 @@ def test_single_bin_still_validates_supplied_folds() -> None:
     folds = np.array([0.0, 1.5, 0.0, 1.0])
     with pytest.raises(ValueError, match="integer values"):
         adjust_ihw(_P, _X, 0.1, nbins=1, folds=folds)
+
+def test_single_bin_keeps_supplied_fold_labels() -> None:
+    folds = np.array([0, 1, 0, 1], dtype=np.intp)
+    result = adjust_ihw(_P, _X, 0.1, nbins=1, folds=folds)
+    np.testing.assert_array_equal(result.folds, folds)
+    assert result.nfolds == 1
+    np.testing.assert_allclose(result.weights, 1.0)
 
 def test_fractional_group_labels_raise_instead_of_being_truncated() -> None:
     groups = np.array([0.0, 1.0, 2.5, 3.0] * 20)
@@ -201,6 +227,7 @@ def test_single_bin_matches_bh() -> None:
     np.testing.assert_allclose(result.adj_pvalues, _p_adjust(p, "fdr_bh"))
     np.testing.assert_allclose(result.weights, 1.0)
     assert result.nfolds == 1
+    np.testing.assert_array_equal(result.folds, 0)
 
 def test_bonferroni_vs_bh_with_one_bin() -> None:
     rng = np.random.default_rng(0)
@@ -226,6 +253,16 @@ def test_exploratory_uses_one_fold() -> None:
     x = rng.uniform(size=80)
     result = adjust_ihw(p, x, 0.1, nbins=4, exploratory=True, seed=1)
     assert result.nfolds == 1
+
+def test_exploratory_rejects_multiple_fold_labels() -> None:
+    rng = np.random.default_rng(0)
+    p = rng.uniform(size=40)
+    x = rng.uniform(size=40)
+    folds = np.array([0, 1, 2] * 13 + [0])[:40]
+    with pytest.raises(
+        IHWValidationError, match="exploratory fits accept only a single fold label"
+    ):
+        adjust_ihw(p, x, 0.1, nbins=4, exploratory=True, folds=folds, seed=1)
 
 def test_default_uses_five_folds() -> None:
     rng = np.random.default_rng(0)
@@ -281,6 +318,17 @@ def test_result_metadata_on_a_default_fit() -> None:
     assert result.nfolds == 5
     assert result.covariate_type == "ordinal"
     assert result.adjustment_type == "bh"
+
+def test_result_pvalues_do_not_alias_a_float64_input() -> None:
+    p = np.array([0.01, 0.2, 0.3, 0.4], dtype=np.float64)
+    x = np.array([1.0, 2.0, 3.0, 4.0])
+    original = p.copy()
+    result = adjust_ihw(p, x, 0.1, nbins=1, seed=1)
+    p[0] = 0.99
+    np.testing.assert_array_equal(result.pvalues, original)
+    multi = adjust_ihw(original, x, 0.1, nbins=2, seed=1)
+    original[0] = 0.5
+    np.testing.assert_allclose(multi.pvalues[0], 0.01)
 
 def test_result_includes_bin_counts() -> None:
     rng = np.random.default_rng(0)

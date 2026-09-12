@@ -4,6 +4,34 @@
 
 All notable user-visible changes to ihwkit are documented here. Each release begins with a short summary, followed by the shipped interface, verification, and known limits.
 
+## [0.1.1] - 2026-09-12
+
+Support and install checks for the 0.1 method, plus small result-object and validation fixes. No statistical change.
+
+### Added
+
+- Declared CPython 3.12, 3.13, and 3.14, with NumPy 2.5 or newer.
+- GitHub Actions tests a real install on Linux, macOS, and Windows (x64 and ARM) at Python 3.12, plus Python 3.13 and 3.14 on Linux.
+- `CITATION.cff` and README citations for this software, the 2016 IHW method paper, the 2021 cross-weighting theory paper, and Bioconductor IHW 1.40.0.
+- Monthly Dependabot updates for GitHub Actions, targeting `dev`.
+- Tag-only GitHub Release workflow: `vX.Y.Z` on current `main`, after the full CI matrix and version/changelog checks.
+
+### Changed
+
+- The documented pytest command runs the full repository suite, including `tools/tests`.
+- Remeasured the public benchmark report and peer comparisons on CPython 3.14.7 and NumPy 2.5.2.
+
+### Fixed
+
+- `IHWResult.pvalues` is a copy, so in-place changes to a float64 input do not alter the result.
+- One-bin fits keep supplied fold labels and still report `nfolds=1`, because they do not cross-weight.
+- `exploratory=True` with more than one fold label raises a validation error that states that constraint.
+
+### Verified
+
+- The repository pytest suite passes against an installed copy with NumPy 2.5 or newer, without requiring SciPy, pyihw, R, or zebrac.
+- The local study recorded in the benchmark report was run on CPython 3.14.7 and NumPy 2.5.2 against that day's 85-test inventory, with frozen R 1.40.0 synthetic and airway replays, and 2,800 validity fits with no ihwkit failures. SciPy/HiGHS, pyihw 0.2.0, and R IHW comparisons were rerun on that same machine.
+
 ## [0.1.0] - 2026-08-29
 
 This is the initial release of ihwkit: a one-module, NumPy-only implementation of unregularized Independent Hypothesis Weighting. It provides one production path and a public evidence report that keeps implementation parity, statistical behavior, numerical robustness, speed, and process memory separate.

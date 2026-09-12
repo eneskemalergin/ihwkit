@@ -2,7 +2,7 @@
 
 # ihwkit benchmark report
 
-Recorded: 2026-08-30T04:21:27+00:00
+Recorded: 2026-09-12T07:51:34+00:00
 
 This is the current measurement baseline for correctness, R parity, statistical behavior, numerical robustness, speed, and process memory. It is a presentation of evidence, not a combined winner score. Failed and unavailable fits remain visible.
 
@@ -22,7 +22,7 @@ This is the current measurement baseline for correctness, R parity, statistical 
 
 | question              |                           result | judgement                                                              |
 | --------------------- | -------------------------------: | ---------------------------------------------------------------------- |
-| repository tests      |                               ok | 83 passed in 1.46s                                                     |
+| repository tests      |                               ok | 85 passed in 1.95s                                                     |
 | generated correctness |                             pass | valid numerical output and structural invariants on named cases        |
 | fixed R parity        |                             pass | strong agreement inside the declared fixed synthetic envelope          |
 | numerical robustness  |             0 failed diagnostics | tested unregularized cases pass; broader robustness remains unclaimed  |
@@ -36,7 +36,7 @@ This is the current measurement baseline for correctness, R parity, statistical 
 - **Numerical agreement is strong where it is defined.** The fixed five-fold synthetic replay agrees with R IHW in rejection decisions and full output vectors at errors far below the declared tolerance.
 - **The named numerical envelope passes.** Every named robustness diagnostic passed; this remains evidence for the tested cases rather than a universal numerical guarantee.
 - **The development-scale statistical result is encouraging but conditional.** This is 1,000 replicates per null scenario and 200 per alternative scenario; 0 ihwkit failures are reported separately instead of converted to zero discoveries.
-- **Performance is favorable on the measured scaling inputs and remains size-dependent.** n=5000: median warmed-fit rank 1/4 (6.9x faster than the next measured method); median process-time rank 1/4 and median RSS rank 1/4; n=50000: median warmed-fit rank 1/4 (5.1x faster than the next measured method); median process-time rank 1/4 and median RSS rank 1/4.
+- **Performance is favorable on the measured scaling inputs and remains size-dependent.** n=5000: median warmed-fit rank 1/4 (6.1x faster than the next measured method); median process-time rank 1/4 and median RSS rank 1/4; n=50000: median warmed-fit rank 1/4 (5.1x faster than the next measured method); median process-time rank 1/4 and median RSS rank 1/4.
 - **The peer timing environment matches this study.** Peer measurements are reused only while that human-readable environment and protocol remain applicable.
 
 ## Statistical evidence
@@ -119,7 +119,7 @@ Paired differences use only replicates where both BH and production succeeded. T
 
 ihwkit 0.1 solves the unregularized Grenander allocation directly in NumPy. The retained SciPy lane solves the same tested problem through a dense LP; it is a comparison, not a dependency or fallback.
 
-- **Measured position:** n=5000: median warmed-fit rank 1/4 (6.9x faster than the next measured method); median process-time rank 1/4 and median RSS rank 1/4; n=50000: median warmed-fit rank 1/4 (5.1x faster than the next measured method); median process-time rank 1/4 and median RSS rank 1/4.
+- **Measured position:** n=5000: median warmed-fit rank 1/4 (6.1x faster than the next measured method); median process-time rank 1/4 and median RSS rank 1/4; n=50000: median warmed-fit rank 1/4 (5.1x faster than the next measured method); median process-time rank 1/4 and median RSS rank 1/4.
 - **Complete process:** Import, method initialization, input construction, and fitting are intentionally combined because that is what a new command experiences.
 - **Scope contrast:** process divided by warmed-fit time is descriptive, not a pure startup decomposition. A large factor says that fit-only timing cannot explain command latency; it does not assign the difference to one component.
 - **Numerical boundary:** these results cover the named unregularized cases only. Finite regularization remains roadmap work and receives no claim here.
@@ -128,10 +128,10 @@ ihwkit 0.1 solves the unregularized Grenander allocation directly in NumPy. The 
 
 | method      | warm median | process median | process / warm | process peak RSS | status |
 | ----------- | ----------: | -------------: | -------------: | ---------------: | :----: |
-| ihwkit      |    6.078 ms |     168.237 ms |          27.7x |          43.2 MB |   ok   |
-| SciPy/HiGHS |   62.089 ms |     522.423 ms |           8.4x |          83.8 MB |   ok   |
-| pyihw       |   42.137 ms |     515.299 ms |          12.2x |          85.2 MB |   ok   |
-| R IHW       |  465.610 ms |     645.235 ms |           1.4x |          93.0 MB |   ok   |
+| ihwkit      |    5.961 ms |     162.737 ms |          27.3x |          44.4 MB |   ok   |
+| SciPy/HiGHS |   57.425 ms |     448.613 ms |           7.8x |          84.7 MB |   ok   |
+| pyihw       |   36.559 ms |     455.870 ms |          12.5x |          85.5 MB |   ok   |
+| R IHW       |  443.622 ms |     588.007 ms |           1.3x |          93.5 MB |   ok   |
 
 <details>
 <summary>Protocol and comparability details</summary>
@@ -199,22 +199,22 @@ Weighted BH using stored R weights passes on every retained airway row. The one-
 
 |     n | bins | method      | samples | median wall |  mean wall |   wall SD | median RSS | status |
 | ----: | ---: | ----------- | ------: | ----------: | ---------: | --------: | ---------: | :----: |
-|   500 |    1 | ihwkit      |      10 |  158.995 ms | 161.165 ms |  9.721 ms |    42.2 MB |   ok   |
-|   500 |    1 | SciPy/HiGHS |      10 |  158.540 ms | 162.225 ms | 13.782 ms |    42.1 MB |   ok   |
-|   500 |    1 | pyihw       |      10 |  491.308 ms | 480.948 ms | 28.334 ms |    81.4 MB |   ok   |
-|   500 |    1 | R IHW       |      10 |  557.568 ms | 559.380 ms | 25.880 ms |    86.1 MB |   ok   |
-|  5000 |    3 | ihwkit      |      10 |  168.237 ms | 170.367 ms | 11.187 ms |    43.2 MB |   ok   |
-|  5000 |    3 | SciPy/HiGHS |      10 |  522.423 ms | 516.317 ms | 30.688 ms |    83.8 MB |   ok   |
-|  5000 |    3 | pyihw       |      10 |  515.299 ms | 514.606 ms | 33.868 ms |    85.2 MB |   ok   |
-|  5000 |    3 | R IHW       |      10 |  645.235 ms | 639.272 ms | 18.721 ms |    93.0 MB |   ok   |
-| 15000 |   10 | ihwkit      |      10 |  179.858 ms | 185.602 ms | 14.877 ms |    44.2 MB |   ok   |
-| 15000 |   10 | SciPy/HiGHS |      10 |  646.925 ms | 644.959 ms | 33.850 ms |    84.7 MB |   ok   |
-| 15000 |   10 | pyihw       |      10 |  561.285 ms | 564.004 ms | 18.392 ms |    86.6 MB |   ok   |
-| 15000 |   10 | R IHW       |      10 |  745.303 ms | 753.737 ms | 22.535 ms |   107.3 MB |   ok   |
-| 50000 |   33 | ihwkit      |      10 |  239.464 ms | 238.320 ms |  4.114 ms |    49.4 MB |   ok   |
-| 50000 |   33 | SciPy/HiGHS |      10 |     1.008 s |    1.005 s | 26.793 ms |    90.7 MB |   ok   |
-| 50000 |   33 | pyihw       |      10 |  795.833 ms | 792.163 ms | 19.039 ms |    92.8 MB |   ok   |
-| 50000 |   33 | R IHW       |      10 |     1.081 s |    1.079 s | 15.812 ms |   141.8 MB |   ok   |
+|   500 |    1 | ihwkit      |      10 |  151.084 ms | 155.814 ms | 13.065 ms |    43.5 MB |   ok   |
+|   500 |    1 | SciPy/HiGHS |      10 |  143.514 ms | 144.318 ms |  6.599 ms |    42.3 MB |   ok   |
+|   500 |    1 | pyihw       |      10 |  415.198 ms | 413.164 ms | 14.902 ms |    81.7 MB |   ok   |
+|   500 |    1 | R IHW       |      10 |  512.725 ms | 514.208 ms |  9.012 ms |    85.9 MB |   ok   |
+|  5000 |    3 | ihwkit      |      10 |  162.737 ms | 164.780 ms |  8.769 ms |    44.4 MB |   ok   |
+|  5000 |    3 | SciPy/HiGHS |      10 |  448.613 ms | 452.803 ms | 13.165 ms |    84.7 MB |   ok   |
+|  5000 |    3 | pyihw       |      10 |  455.870 ms | 455.495 ms | 11.122 ms |    85.5 MB |   ok   |
+|  5000 |    3 | R IHW       |      10 |  588.007 ms | 590.631 ms |  6.787 ms |    93.5 MB |   ok   |
+| 15000 |   10 | ihwkit      |      10 |  177.535 ms | 177.327 ms |  4.450 ms |    45.7 MB |   ok   |
+| 15000 |   10 | SciPy/HiGHS |      10 |  562.636 ms | 564.308 ms | 10.339 ms |    86.4 MB |   ok   |
+| 15000 |   10 | pyihw       |      10 |  512.508 ms | 515.088 ms | 17.683 ms |    87.2 MB |   ok   |
+| 15000 |   10 | R IHW       |      10 |  699.208 ms | 700.504 ms |  7.363 ms |   107.8 MB |   ok   |
+| 50000 |   33 | ihwkit      |      10 |  237.730 ms | 236.408 ms |  5.042 ms |    50.2 MB |   ok   |
+| 50000 |   33 | SciPy/HiGHS |      10 |  947.290 ms | 949.314 ms | 19.052 ms |    92.1 MB |   ok   |
+| 50000 |   33 | pyihw       |      10 |  752.549 ms | 740.711 ms | 17.724 ms |    93.3 MB |   ok   |
+| 50000 |   33 | R IHW       |      10 |     1.044 s |    1.046 s |  9.303 ms |   142.5 MB |   ok   |
 
 </details>
 
@@ -223,31 +223,31 @@ Weighted BH using stored R weights passes on every retained airway row. The one-
 
 |     n | bins | method      | samples | median wall |  mean wall |    wall SD | status |
 | ----: | ---: | ----------- | ------: | ----------: | ---------: | ---------: | :----: |
-|   500 |    1 | ihwkit      |      10 |  174.550 us | 176.742 us |   8.130 us |   ok   |
-|   500 |    1 | SciPy/HiGHS |      10 |  365.491 us | 368.219 us |  22.521 us |   ok   |
-|   500 |    1 | pyihw       |      10 |  207.656 us | 207.538 us |   9.877 us |   ok   |
-|   500 |    1 | R IHW       |      10 |  377.670 ms | 377.792 ms |   8.505 ms |   ok   |
-|  5000 |    3 | ihwkit      |      10 |    6.078 ms |   6.093 ms |  48.271 us |   ok   |
-|  5000 |    3 | SciPy/HiGHS |      10 |   62.089 ms |  62.478 ms |   1.037 ms |   ok   |
-|  5000 |    3 | pyihw       |      10 |   42.137 ms |  44.219 ms |   4.200 ms |   ok   |
-|  5000 |    3 | R IHW       |      10 |  465.610 ms | 466.617 ms |  11.879 ms |   ok   |
-| 15000 |   10 | ihwkit      |      10 |   19.554 ms |  19.490 ms | 241.434 us |   ok   |
-| 15000 |   10 | SciPy/HiGHS |      10 |  172.027 ms | 174.956 ms |   7.814 ms |   ok   |
-| 15000 |   10 | pyihw       |      10 |  104.621 ms | 104.457 ms |   1.360 ms |   ok   |
-| 15000 |   10 | R IHW       |      10 |  585.806 ms | 585.917 ms |  13.372 ms |   ok   |
-| 50000 |   33 | ihwkit      |      10 |   65.740 ms |  66.596 ms |   3.457 ms |   ok   |
-| 50000 |   33 | SciPy/HiGHS |      10 |  565.586 ms | 571.140 ms |  13.738 ms |   ok   |
-| 50000 |   33 | pyihw       |      10 |  333.995 ms | 334.580 ms |   3.683 ms |   ok   |
-| 50000 |   33 | R IHW       |      10 |  912.838 ms | 920.527 ms |  32.438 ms |   ok   |
+|   500 |    1 | ihwkit      |      10 |  176.835 us | 177.879 us |   3.946 us |   ok   |
+|   500 |    1 | SciPy/HiGHS |      10 |  352.212 us | 353.885 us |   5.620 us |   ok   |
+|   500 |    1 | pyihw       |      10 |  206.456 us | 216.430 us |  20.184 us |   ok   |
+|   500 |    1 | R IHW       |      10 |  359.977 ms | 359.992 ms |   3.400 ms |   ok   |
+|  5000 |    3 | ihwkit      |      10 |    5.961 ms |   5.966 ms |  14.859 us |   ok   |
+|  5000 |    3 | SciPy/HiGHS |      10 |   57.425 ms |  57.407 ms | 145.546 us |   ok   |
+|  5000 |    3 | pyihw       |      10 |   36.559 ms |  36.586 ms |  81.566 us |   ok   |
+|  5000 |    3 | R IHW       |      10 |  443.622 ms | 442.909 ms |   7.660 ms |   ok   |
+| 15000 |   10 | ihwkit      |      10 |   18.242 ms |  18.251 ms |  91.866 us |   ok   |
+| 15000 |   10 | SciPy/HiGHS |      10 |  163.435 ms | 163.754 ms |   1.702 ms |   ok   |
+| 15000 |   10 | pyihw       |      10 |   97.926 ms |  97.932 ms | 529.036 us |   ok   |
+| 15000 |   10 | R IHW       |      10 |  536.996 ms | 538.102 ms |   5.526 ms |   ok   |
+| 50000 |   33 | ihwkit      |      10 |   60.989 ms |  61.006 ms | 165.912 us |   ok   |
+| 50000 |   33 | SciPy/HiGHS |      10 |  529.275 ms | 531.014 ms |   9.276 ms |   ok   |
+| 50000 |   33 | pyihw       |      10 |  309.392 ms | 309.404 ms |   1.713 ms |   ok   |
+| 50000 |   33 | R IHW       |      10 |  868.459 ms | 869.703 ms |   7.847 ms |   ok   |
 
 </details>
 
 <details>
 <summary>Environment, retained data, and rerun commands</summary>
 
-Peer timing recorded: 2026-08-30T03:25:49+00:00
+Peer timing recorded: 2026-09-12T07:50:38+00:00
 
-- **platform:** Linux-7.1.10-200.fc44.x86_64-x86_64-with-glibc2.43
+- **platform:** Linux-7.2.4-200.fc44.x86_64-x86_64-with-glibc2.43
 - **cpu:** AMD Ryzen 9 3950X 16-Core Processor
 - **logical_cpus:** 32
 - **python:** 3.14.7
@@ -261,19 +261,19 @@ The retained datasets are deterministic generated draws and the two self-contain
 Run the complete study, reusing the dated peer timing table:
 
 ```bash
-uv run --no-project --with pytest --with numpy --with scipy --with pyihw==0.2.0 --with matplotlib python -m bench study
+uv run --no-project --with pytest --with 'numpy>=2.5' --with scipy --with pyihw==0.2.0 --with matplotlib python -m bench study
 ```
 
 Refresh unchanged peers only when their code, runtime, machine, or benchmark protocol changes:
 
 ```bash
-uv run --no-project --with pytest --with numpy --with scipy --with pyihw==0.2.0 --with matplotlib python -m bench study --refresh-peers
+uv run --no-project --with pytest --with 'numpy>=2.5' --with scipy --with pyihw==0.2.0 --with matplotlib python -m bench study --refresh-peers
 ```
 
 Render the report again without rerunning measurements:
 
 ```bash
-uv run --no-project --with numpy --with matplotlib python -m bench report
+uv run --no-project --with 'numpy>=2.5' --with matplotlib python -m bench report
 ```
 
 </details>
