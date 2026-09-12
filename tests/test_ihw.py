@@ -52,6 +52,20 @@ def test_pvalue_above_one_raises() -> None:
     with pytest.raises(ValueError, match=r"\[0, 1\]"):
         adjust_ihw(np.array([0.1, 1.5]), np.array([1.0, 2.0]), 0.1)
 
+def test_alpha_outside_open_unit_interval_raises() -> None:
+    """Alpha must be strictly between 0 and 1."""
+
+    with pytest.raises(IHWValidationError, match=r"\(0, 1\)"):
+        adjust_ihw(_P, _X, 0.0)
+    with pytest.raises(IHWValidationError, match=r"\(0, 1\)"):
+        adjust_ihw(_P, _X, 1.0)
+    with pytest.raises(IHWValidationError, match=r"\(0, 1\)"):
+        adjust_ihw(_P, _X, -0.1)
+    with pytest.raises(IHWValidationError, match=r"\(0, 1\)"):
+        adjust_ihw(_P, _X, 1.1)
+    with pytest.raises(IHWValidationError, match=r"\(0, 1\)"):
+        adjust_ihw(_P, _X, float("nan"))
+
 def test_length_mismatch_raises() -> None:
     with pytest.raises(ValueError, match="Length mismatch"):
         adjust_ihw(_P, np.array([1.0, 2.0]), 0.1)
@@ -101,6 +115,11 @@ def test_pvalue_not_1d_raises() -> None:
 def test_covariate_not_1d_raises() -> None:
     with pytest.raises(ValueError, match="1-d"):
         adjust_ihw(_P, np.ones((4, 1)), 0.1)
+
+def test_groups_must_be_1d() -> None:
+    groups = np.array([0, 1, 2, 3], dtype=np.intp).reshape(4, 1)
+    with pytest.raises(IHWValidationError, match="1-d"):
+        adjust_ihw(_P, _X, 0.1, groups=groups)
 
 def test_folds_must_be_1d() -> None:
     rng = np.random.default_rng(0)
