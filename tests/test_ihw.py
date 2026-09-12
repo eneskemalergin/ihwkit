@@ -301,6 +301,17 @@ def test_result_metadata_on_a_default_fit() -> None:
     assert result.covariate_type == "ordinal"
     assert result.adjustment_type == "bh"
 
+def test_result_pvalues_do_not_alias_a_float64_input() -> None:
+    p = np.array([0.01, 0.2, 0.3, 0.4], dtype=np.float64)
+    x = np.array([1.0, 2.0, 3.0, 4.0])
+    original = p.copy()
+    result = adjust_ihw(p, x, 0.1, nbins=1, seed=1)
+    p[0] = 0.99
+    np.testing.assert_array_equal(result.pvalues, original)
+    multi = adjust_ihw(original, x, 0.1, nbins=2, seed=1)
+    original[0] = 0.5
+    np.testing.assert_allclose(multi.pvalues[0], 0.01)
+
 def test_result_includes_bin_counts() -> None:
     rng = np.random.default_rng(0)
     p = rng.uniform(size=80)

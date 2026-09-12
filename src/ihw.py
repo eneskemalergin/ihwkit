@@ -470,7 +470,7 @@ def adjust_ihw(
     weights depend on that level; do not interpret one fit as an alpha-free
     q-value curve.
     """
-    p = np.asarray(pvalues, dtype=np.float64)
+    p = np.array(pvalues, dtype=np.float64, copy=True)
     x = np.asarray(covariates, dtype=np.float64)
     if p.ndim != 1:
         raise IHWValidationError("pvalues must be a 1-d array")
