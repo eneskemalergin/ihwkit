@@ -14,6 +14,7 @@ Support and install checks for the 0.1 method. No statistical change.
 - GitHub Actions tests a real install on Linux, macOS, and Windows (x64 and ARM) at Python 3.12, plus Python 3.13 and 3.14 on Linux.
 - `CITATION.cff` and README citations for this software, the 2016 IHW method paper, the 2021 cross-weighting theory paper, and Bioconductor IHW 1.40.0.
 - Monthly Dependabot updates for GitHub Actions, targeting `dev`.
+- Tag-only GitHub Release workflow: `vX.Y.Z` on current `main`, after the full CI matrix and version/changelog checks.
 
 ### Changed
 
