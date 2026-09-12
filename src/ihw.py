@@ -444,9 +444,10 @@ def adjust_ihw(
     adjustment_type : {"bh", "bonferroni"}, optional
         Multiple-testing adjustment used by the weight optimization.
     folds, groups, m_groups : array-like or None, optional
-        Optional frozen partitions or full-family group counts. ``m_groups``
-        may exceed the observed counts when fitting a filtered subset, but may
-        never be smaller.
+        Optional frozen partitions or full-family group counts. One-bin fits
+        do not cross-weight, but still return any supplied fold labels.
+        ``m_groups`` may exceed the observed counts when fitting a filtered
+        subset, but may never be smaller.
     rng : numpy.random.Generator or None, optional
         Generator used for fold assignment.
     seed : int or None, optional
@@ -556,7 +557,11 @@ def adjust_ihw(
             weights=np.ones(n, dtype=np.float64),
             weighted_pvalues=p.copy(),
             groups=group_id,
-            folds=np.zeros(n, dtype=np.intp),
+            folds=(
+                validated_folds
+                if validated_folds is not None
+                else np.zeros(n, dtype=np.intp)
+            ),
             alpha=alpha,
             nbins=1,
             nfolds=1,

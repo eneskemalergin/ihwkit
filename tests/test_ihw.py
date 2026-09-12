@@ -157,6 +157,13 @@ def test_single_bin_still_validates_supplied_folds() -> None:
     with pytest.raises(ValueError, match="integer values"):
         adjust_ihw(_P, _X, 0.1, nbins=1, folds=folds)
 
+def test_single_bin_keeps_supplied_fold_labels() -> None:
+    folds = np.array([0, 1, 0, 1], dtype=np.intp)
+    result = adjust_ihw(_P, _X, 0.1, nbins=1, folds=folds)
+    np.testing.assert_array_equal(result.folds, folds)
+    assert result.nfolds == 1
+    np.testing.assert_allclose(result.weights, 1.0)
+
 def test_fractional_group_labels_raise_instead_of_being_truncated() -> None:
     groups = np.array([0.0, 1.0, 2.5, 3.0] * 20)
     with pytest.raises(ValueError, match="integer values"):
@@ -220,6 +227,7 @@ def test_single_bin_matches_bh() -> None:
     np.testing.assert_allclose(result.adj_pvalues, _p_adjust(p, "fdr_bh"))
     np.testing.assert_allclose(result.weights, 1.0)
     assert result.nfolds == 1
+    np.testing.assert_array_equal(result.folds, 0)
 
 def test_bonferroni_vs_bh_with_one_bin() -> None:
     rng = np.random.default_rng(0)
