@@ -4,6 +4,27 @@
 
 All notable user-visible changes to ihwkit are documented here. Each release begins with a short summary, followed by the shipped interface, verification, and known limits.
 
+## [0.1.1] - 2026-09-12
+
+Support and install checks for the 0.1 method. No statistical change.
+
+### Added
+
+- Declared CPython 3.12, 3.13, and 3.14, with NumPy 2.5 or newer.
+- GitHub Actions tests a real install on Linux, macOS, and Windows (x64 and ARM) at Python 3.12, plus Python 3.13 and 3.14 on Linux.
+
+### Changed
+
+- The documented pytest command runs the full repository suite, including `tools/tests`.
+
+### Verified
+
+- The repository pytest suite passes against an installed copy with NumPy 2.5 or newer, without requiring SciPy, pyihw, R, or zebrac.
+
+### Known limitations
+
+- Version 0.1.1 does not change the unregularized IHW procedure or add a PyPI release.
+
 ## [0.1.0] - 2026-08-29
 
 This is the initial release of ihwkit: a one-module, NumPy-only implementation of unregularized Independent Hypothesis Weighting. It provides one production path and a public evidence report that keeps implementation parity, statistical behavior, numerical robustness, speed, and process memory separate.
