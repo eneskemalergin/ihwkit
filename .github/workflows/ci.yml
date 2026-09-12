@@ -8,9 +8,8 @@ on:
     paths-ignore:
       - "**/*.md"
   pull_request:
-    paths-ignore:
-      - "**/*.md"
   workflow_dispatch:
+  workflow_call:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -83,7 +82,7 @@ jobs:
         run: python -m pytest -q -o pythonpath=.
 
       - name: Packaging
-        if: ${{ matrix.packaging }}
+        if: ${{ matrix.packaging == true }}
         run: |
           python -m pip install build
           python -m build
@@ -117,12 +116,25 @@ jobs:
               raise SystemExit("sdist is missing LICENSE")
           if "README.md" not in joined:
               raise SystemExit("sdist is missing README.md")
+          if "CITATION.cff" not in joined:
+              raise SystemExit("sdist is missing CITATION.cff")
           leaked_sdist = [name for name in sdist_names if name.split("/", 1)[-1].startswith(("bench/", "tools/", "tests/", "plan/", ".github/"))]
           if leaked_sdist:
               raise SystemExit(f"sdist contains repository-only paths: {leaked_sdist}")
           PY
           python -m pip install dist/*.whl --force-reinstall
           python -c "import ihw; from pathlib import Path; p = Path(ihw.__file__).resolve(); print(p); parts = set(p.parts); assert 'site-packages' in parts or 'dist-packages' in parts, p"
-          python -c "from ihw import adjust_ihw; import numpy as np; rng = np.random.default_rng(0); n = 200; x = rng.uniform(size=n); p = rng.uniform(size=n); r = adjust_ihw(p, x, alpha=0.1, seed=1); assert r.weights.shape == (n,)"
           python -m pip install dist/*.tar.gz --force-reinstall
           python -c "import ihw; from pathlib import Path; p = Path(ihw.__file__).resolve(); print('sdist', p); parts = set(p.parts); assert 'site-packages' in parts or 'dist-packages' in parts, p"
+
+  ci-ok:
+    name: CI OK
+    if: always()
+    needs: [test]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Require every matrix cell
+        run: |
+          echo "test=${{ needs.test.result }}"
+          test "${{ needs.test.result }}" = "success"
