@@ -1,0 +1,128 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+    paths-ignore:
+      - "**/*.md"
+  pull_request:
+    paths-ignore:
+      - "**/*.md"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux x64 / Py3.12
+            os: ubuntu-24.04
+            python-version: "3.12"
+            packaging: true
+          - name: Linux ARM / Py3.12
+            os: ubuntu-24.04-arm
+            python-version: "3.12"
+            packaging: false
+          - name: Windows x64 / Py3.12
+            os: windows-2025
+            python-version: "3.12"
+            packaging: false
+          - name: Windows ARM / Py3.12
+            os: windows-11-arm
+            python-version: "3.12"
+            packaging: false
+          - name: macOS x64 / Py3.12
+            os: macos-15-intel
+            python-version: "3.12"
+            packaging: false
+          - name: macOS ARM / Py3.12
+            os: macos-15
+            python-version: "3.12"
+            packaging: false
+          - name: Linux x64 / Py3.13
+            os: ubuntu-24.04
+            python-version: "3.13"
+            packaging: false
+          - name: Linux x64 / Py3.14
+            os: ubuntu-24.04
+            python-version: "3.14"
+            packaging: false
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install .
+          python -m pip install pytest
+
+      - name: Import from install
+        run: python -c "import ihw; from pathlib import Path; p = Path(ihw.__file__).resolve(); print(p); parts = set(p.parts); assert 'site-packages' in parts or 'dist-packages' in parts, p"
+
+      - name: Test
+        run: python -m pytest -q -o pythonpath=.
+
+      - name: Packaging
+        if: ${{ matrix.packaging }}
+        run: |
+          python -m pip install build
+          python -m build
+          python - <<'PY'
+          import tarfile
+          import zipfile
+          from pathlib import Path
+
+          dist = Path("dist")
+          wheels = list(dist.glob("*.whl"))
+          sdists = list(dist.glob("*.tar.gz"))
+          if len(wheels) != 1:
+              raise SystemExit(f"expected one wheel, found {wheels}")
+          if len(sdists) != 1:
+              raise SystemExit(f"expected one sdist, found {sdists}")
+
+          wheel_names = zipfile.ZipFile(wheels[0]).namelist()
+          print("wheel:", wheels[0].name)
+          print("\n".join(wheel_names))
+          if not any(name == "ihw.py" or name.endswith("/ihw.py") for name in wheel_names):
+              raise SystemExit("wheel is missing ihw.py")
+          forbidden = ("tools/", "bench/", "plan/", "tests/")
+          leaked = [name for name in wheel_names if any(part in name for part in forbidden)]
+          if leaked:
+              raise SystemExit(f"wheel contains repository-only paths: {leaked}")
+
+          sdist_names = tarfile.open(sdists[0]).getnames()
+          joined = "\n".join(sdist_names)
+          print("sdist:", sdists[0].name)
+          if "LICENSE" not in joined:
+              raise SystemExit("sdist is missing LICENSE")
+          if "README.md" not in joined:
+              raise SystemExit("sdist is missing README.md")
+          leaked_sdist = [name for name in sdist_names if name.split("/", 1)[-1].startswith(("bench/", "tools/", "tests/", "plan/", ".github/"))]
+          if leaked_sdist:
+              raise SystemExit(f"sdist contains repository-only paths: {leaked_sdist}")
+          PY
+          python -m pip install dist/*.whl --force-reinstall
+          python -c "import ihw; from pathlib import Path; p = Path(ihw.__file__).resolve(); print(p); parts = set(p.parts); assert 'site-packages' in parts or 'dist-packages' in parts, p"
+          python -c "from ihw import adjust_ihw; import numpy as np; rng = np.random.default_rng(0); n = 200; x = rng.uniform(size=n); p = rng.uniform(size=n); r = adjust_ihw(p, x, alpha=0.1, seed=1); assert r.weights.shape == (n,)"
+          python -m pip install dist/*.tar.gz --force-reinstall
+          python -c "import ihw; from pathlib import Path; p = Path(ihw.__file__).resolve(); print('sdist', p); parts = set(p.parts); assert 'site-packages' in parts or 'dist-packages' in parts, p"
