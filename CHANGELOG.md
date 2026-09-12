@@ -16,10 +16,12 @@ Support and install checks for the 0.1 method. No statistical change.
 ### Changed
 
 - The documented pytest command runs the full repository suite, including `tools/tests`.
+- Remeasured the public benchmark report and peer comparisons on CPython 3.14.7 and NumPy 2.5.2.
 
 ### Verified
 
 - The repository pytest suite passes against an installed copy with NumPy 2.5 or newer, without requiring SciPy, pyihw, R, or zebrac.
+- The full local study on CPython 3.14.7 and NumPy 2.5.2 passed 85 tests, frozen R 1.40.0 synthetic and airway replays, and 2,800 validity fits with no ihwkit failures. SciPy/HiGHS, pyihw 0.2.0, and R IHW comparisons were rerun on that same machine.
 
 ### Known limitations
 
