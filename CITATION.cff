@@ -1,0 +1,80 @@
+cff-version: 1.2.0
+message: >
+  If you use ihwkit, please cite this software and the original IHW
+  method paper (Ignatiadis et al. 2016). Cite Ignatiadis and Huber
+  (2021) when discussing theoretical properties of cross-weighting.
+  Cite the Bioconductor IHW R package when you use or compare against
+  that implementation.
+title: "ihwkit: Independent Hypothesis Weighting with NumPy"
+version: 0.1.1
+date-released: 2026-09-12
+license: MIT
+repository-code: "https://github.com/eneskemalergin/ihwkit"
+authors:
+  - family-names: Ergin
+    given-names: Enes Kemal
+    orcid: "https://orcid.org/0000-0001-9810-7399"
+keywords:
+  - false discovery rate
+  - independent hypothesis weighting
+  - multiple testing
+  - statistics
+abstract: >
+  ihwkit learns hypothesis weights from an informative covariate, then
+  applies weighted Benjamini-Hochberg or Bonferroni adjustment. Version
+  0.1 is a one-module, NumPy-only implementation of five-fold
+  cross-weighting and the unregularized (infinite-lambda) allocation.
+  It is not a replacement for the full Bioconductor IHW R package,
+  which still provides regularization, nested lambda selection, and
+  plotting.
+references:
+  - type: article
+    title: "Data-driven hypothesis weighting increases detection power in genome-scale multiple testing"
+    authors:
+      - family-names: Ignatiadis
+        given-names: Nikolaos
+      - family-names: Klaus
+        given-names: Bernd
+      - family-names: Zaugg
+        given-names: Judith B.
+      - family-names: Huber
+        given-names: Wolfgang
+    year: 2016
+    journal: Nature Methods
+    volume: "13"
+    issue: "7"
+    pages: "577-580"
+    doi: 10.1038/nmeth.3885
+    url: "https://doi.org/10.1038/nmeth.3885"
+  - type: article
+    title: "Covariate powered cross-weighted multiple testing"
+    authors:
+      - family-names: Ignatiadis
+        given-names: Nikolaos
+      - family-names: Huber
+        given-names: Wolfgang
+    year: 2021
+    journal: "Journal of the Royal Statistical Society Series B: Statistical Methodology"
+    volume: "83"
+    issue: "4"
+    pages: "720-751"
+    doi: 10.1111/rssb.12411
+    url: "https://doi.org/10.1111/rssb.12411"
+  - type: software
+    title: "IHW: Independent Hypothesis Weighting"
+    authors:
+      - family-names: Ignatiadis
+        given-names: Nikolaos
+      - family-names: Klaus
+        given-names: Bernd
+      - family-names: Zaugg
+        given-names: Judith B.
+      - family-names: Huber
+        given-names: Wolfgang
+    year: 2026
+    version: "1.40.0"
+    url: "https://bioconductor.org/packages/IHW"
+    repository-code: "https://github.com/nignatiadis/IHW"
+    notes: >
+      Bioconductor R package. Frozen reference records in this
+      repository were generated with IHW 1.40.0.
