@@ -13,6 +13,7 @@ Support and install checks for the 0.1 method. No statistical change.
 - Declared CPython 3.12, 3.13, and 3.14, with NumPy 2.5 or newer.
 - GitHub Actions tests a real install on Linux, macOS, and Windows (x64 and ARM) at Python 3.12, plus Python 3.13 and 3.14 on Linux.
 - `CITATION.cff` and README citations for this software, the 2016 IHW method paper, the 2021 cross-weighting theory paper, and Bioconductor IHW 1.40.0.
+- Monthly Dependabot updates for GitHub Actions, targeting `dev`.
 
 ### Changed
 
