@@ -6,7 +6,7 @@ All notable user-visible changes to ihwkit are documented here. Each release beg
 
 ## [0.1.1] - 2026-09-12
 
-Support and install checks for the 0.1 method. No statistical change.
+Support and install checks for the 0.1 method, plus small result-object and validation fixes. No statistical change.
 
 ### Added
 
@@ -21,10 +21,16 @@ Support and install checks for the 0.1 method. No statistical change.
 - The documented pytest command runs the full repository suite, including `tools/tests`.
 - Remeasured the public benchmark report and peer comparisons on CPython 3.14.7 and NumPy 2.5.2.
 
+### Fixed
+
+- `IHWResult.pvalues` is a copy, so in-place changes to a float64 input do not alter the result.
+- One-bin fits keep supplied fold labels and still report `nfolds=1`, because they do not cross-weight.
+- `exploratory=True` with more than one fold label raises a validation error that states that constraint.
+
 ### Verified
 
 - The repository pytest suite passes against an installed copy with NumPy 2.5 or newer, without requiring SciPy, pyihw, R, or zebrac.
-- The full local study on CPython 3.14.7 and NumPy 2.5.2 passed 85 tests, frozen R 1.40.0 synthetic and airway replays, and 2,800 validity fits with no ihwkit failures. SciPy/HiGHS, pyihw 0.2.0, and R IHW comparisons were rerun on that same machine.
+- The local study recorded in the benchmark report was run on CPython 3.14.7 and NumPy 2.5.2 against that day's 85-test inventory, with frozen R 1.40.0 synthetic and airway replays, and 2,800 validity fits with no ihwkit failures. SciPy/HiGHS, pyihw 0.2.0, and R IHW comparisons were rerun on that same machine.
 
 ## [0.1.0] - 2026-08-29
 
