@@ -254,6 +254,16 @@ def test_exploratory_uses_one_fold() -> None:
     result = adjust_ihw(p, x, 0.1, nbins=4, exploratory=True, seed=1)
     assert result.nfolds == 1
 
+def test_exploratory_rejects_multiple_fold_labels() -> None:
+    rng = np.random.default_rng(0)
+    p = rng.uniform(size=40)
+    x = rng.uniform(size=40)
+    folds = np.array([0, 1, 2] * 13 + [0])[:40]
+    with pytest.raises(
+        IHWValidationError, match="exploratory fits accept only a single fold label"
+    ):
+        adjust_ihw(p, x, 0.1, nbins=4, exploratory=True, folds=folds, seed=1)
+
 def test_default_uses_five_folds() -> None:
     rng = np.random.default_rng(0)
     p = rng.uniform(size=80)

@@ -546,7 +546,9 @@ def adjust_ihw(
         if not exploratory:
             eff_nfolds = nfolds_f
         elif nfolds_f != 1:
-            raise IHWValidationError("folds labels must be in 0 .. nfolds-1 with no gaps")
+            raise IHWValidationError(
+                "exploratory fits accept only a single fold label"
+            )
     pad_method = "fdr_bh" if adjustment_type == "bh" else "bonferroni"
     if nbins_i == 1:
         order = np.argsort(p)
